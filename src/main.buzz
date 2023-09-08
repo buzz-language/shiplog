@@ -1,0 +1,44 @@
+import "std";
+import "args";
+
+fun main([str] args) > void {
+    Command command = Command{
+        name = "shiplog",
+        desc = "⚓ A journal keeping cli tool",
+        options = {
+            "help": Option{
+                name = "help",
+                desc = "Show this help message",
+                aliases = [ "h" ],
+            }
+        },
+        commands = {
+            "add": Command{
+                name = "add",
+                desc = "Write a log entry",
+                options = {
+                    "file": Option{
+                        name = "file",
+                        desc = "Use file content as entry",
+                        aliases = [ "f" ],
+                    },
+                },
+                arguments = {
+                    "entry": Argument{
+                        name = "entry",
+                        desc = "The entry. Any word prefixed by `+` will be added as a tag. If omitted will be read from stdin",
+                        min = 0,
+                        max = 1,
+                    },
+                },
+            },
+        },
+    };
+
+    command.parse(args);
+
+    if (command.options["help"]?.value != null) {
+        command.help();
+        return;
+    }
+}
