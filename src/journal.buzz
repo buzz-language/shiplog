@@ -1,0 +1,139 @@
+import "std";
+import "fs";
+import "os";
+import "sqlite";
+import "errors";
+import "serialize";
+
+export object Attribute {
+    int id,
+    str name,
+    str @"type",
+
+    static fun createTables(Database db) > void !> SQLiteError {
+        | FIXME: calling with resolve should free surrounding function to require yield type
+        resolve &(db.prepare(`
+            CREATE TABLE attributes (
+                rowid INTEGER NOT NULL PRIMARY KEY,
+                name TEXT NOT NULL UNIQUE,
+                type TEXT NOT NULL
+            )
+        `)).execute();
+
+        resolve &(db.prepare(`
+            CREATE TABLE entries_attributes (
+                entry_id INTEGER NOT NULL, 
+                attribute_id INTEGER NOT NULL,
+                value TEXT NOT NULL,
+                FOREIGN KEY(entry_id) REFERENCES entries(rowid),
+                FOREIGN KEY(attribute_id) REFERENCES attributes(rowid),
+                PRIMARY KEY(entry_id, attribute_id)
+            )
+        `)).execute();
+    }
+}
+
+export object Tag {
+    int id,
+    str tag,
+
+    static fun createTables(Database db) > void !> SQLiteError {
+        resolve &(db.prepare(`
+            CREATE TABLE IF NOT EXISTS entries_tags (
+                entry_id INTEGER NOT NULL, 
+                tag TEXT NOT NULL,
+                FOREIGN KEY(entry_id) REFERENCES entries(rowid),
+                PRIMARY KEY(entry_id, tag)
+            )
+        `)).execute();
+    }
+}
+
+export object Entry {
+    int id,
+    str createdAt,
+    str? updatedAt,
+    str content,
+    str? location,
+    [Tag] tags = [<Tag>],
+    [Attribute] attributes = [<Attribute>],
+
+    static fun fromBoxed(Boxed rawEntry) > Entry {
+        [Boxed] propertyList = rawEntry.listValue();
+
+        return Entry{
+            id = propertyList[0].integerValue(),
+            createdAt = propertyList[1].stringValue(),
+            updatedAt = propertyList[2].string(),
+            content = propertyList[3].stringValue(),
+            location = propertyList[4].string(),
+        };
+    }
+
+    static fun createTables(Database db) > void !> SQLiteError {
+        resolve &(db.prepare(`
+            CREATE TABLE IF NOT EXISTS entries (
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,
+                updated_at TIMESTAMP,
+                content TEXT NOT NULL,
+                location TEXT
+            )
+        `)).execute();
+    }
+
+    static fun parse(str args) > Entry? {
+        return null;
+    }
+}
+
+export object Filter {
+    [Tag] tags = [<Tag>],
+    [Tag] excludedTags = [<Tag>],
+    [Attribute] attributes = [<Attribute>],
+    [Attribute] excludedAttributes = [<Attribute>],
+    str content = "",
+}
+
+export object Journal {
+    Database db,
+
+    static fun init(SQLite sqlite, str? path = null) > Journal !> SQLiteError, FileSystemError, UnexpectedError {
+        str dir = path ?? "{env("HOME")}/.shiplog";
+
+        try {
+            makeDirectory(dir);
+        } catch (FileSystemError err) {
+            if (err != FileSystemError.PathAlreadyExists) {
+                throw err;
+            }
+        }
+
+        const Database db = sqlite.open(
+            "{dir}/journal.db",
+            flags: [OpenFlag.ReadWrite, OpenFlag.Create],
+        );
+
+        Entry.createTables(db);
+        Tag.createTables(db);
+        Attribute.createTables(db);
+
+        Journal journal = Journal{
+            db = db,
+        };
+
+        return journal;
+    }
+
+    fun getEntries(Filter filter) > [Entry] !> SQLiteError {
+        Statement select = this.db.prepare(`
+            SELECT * FROM entries
+        `);
+
+        [Entry] entries = [<Entry>];
+        foreach (Boxed entry in &select.execute()) {
+            entries.append(Entry.fromBoxed(entry));
+        }
+
+        return entries;
+    }
+}

@@ -1,5 +1,36 @@
 import "std";
 import "args";
+import "journal";
+import "sqlite";
+import "errors";
+import "io";
+import "os";
+
+fun getEntrySource(Command command) > str? !> FileSystemError, ReadWriteError, UnexpectedError {
+    if (command.options["file"]?.value -> file) {
+        return File.open(file, mode: FileMode.read).readAll();
+    }
+
+    if (command.arguments["entry"]?.value -> entry) {
+        if (entry.len() > 0) {
+            return entry.join(" ");
+        }
+    }
+
+    if (!stdin.isTTY()) {
+        return stdin.readAll();
+    }
+
+    const str tmpFile = tmpFilename("shiplog");
+
+    | TODO: overwrite existing entry when id provided
+
+    if (execute([env("EDITOR") ?? "vi", tmpFile]) == 0) {
+        return File.open(tmpFile, mode: FileMode.read).readAll();
+    }
+
+    return null;
+}
 
 fun main([str] args) > void {
     Command command = Command{
@@ -13,6 +44,18 @@ fun main([str] args) > void {
             }
         },
         commands = {
+            "init": Command{
+                name = "init",
+                desc = "Init shiplog database",
+                aliases = [ "i" ],
+                options = {
+                    "directory": Option{
+                        name = "directory",
+                        desc = "Specify where shiplog will leave (default is ~/.shiplog)",
+                        aliases = [ "dir", "d" ],
+                    },
+                },
+            },
             "add": Command{
                 name = "add",
                 desc = "Write a log entry",
@@ -28,7 +71,7 @@ fun main([str] args) > void {
                         name = "entry",
                         desc = "The entry. Any word prefixed by `+` will be added as a tag. If omitted will be read from stdin",
                         min = 0,
-                        max = 1,
+                        max = null,
                     },
                 },
             },
@@ -40,5 +83,24 @@ fun main([str] args) > void {
     if (command.options["help"]?.value != null) {
         command.help();
         return;
+    }
+
+    try {
+        SQLite sqlite = SQLite.init();
+
+        Command initCommand = command.commands["init"]!;
+        if (initCommand.selected) {
+            Journal.init(sqlite, path: initCommand.options["directory"]?.value);
+            return;
+        }
+
+        Command addCommand = command.commands["add"]!;
+        if (addCommand.selected) {
+            getEntrySource(addCommand);
+        }
+    } catch (SQLiteError error) {
+        print("SQL error: {error.code} {error.message}");
+    } catch (any error) {
+        print("Something went wrong: {error}");
     }
 }

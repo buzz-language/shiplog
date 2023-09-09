@@ -14,7 +14,7 @@ export object Argument {
     str name,
     str desc,
     int min = 1,
-    int max = 1,
+    int? max = 1,
     [str]? value = null,
     [str]? defaultValue = null,
 }
@@ -102,13 +102,13 @@ export object Command {
         
         if (currentArg -> arg) {
             [str] value = [<str>];
-            for (int i = 0; i < arg.max and this.state!.offset < this.state!.args.len(); i = i + 1) {
+            for (int i = 0; (arg.max == null or i < arg.max!) and this.state!.offset < this.state!.args.len(); i = i + 1) {
                 value.append(this.state!.args[this.state!.offset]);
                 this.state!.offset = this.state!.offset + 1;
 
                 | Next is not an argument
                 if ((this.state!.offset >= this.state!.args.len() or this.state!.args[this.state!.offset].startsWith("-"))
-                    and i + 1 < arg.max) {
+                    and (arg.max == null or i + 1 < arg.max)) {
                     if (i + 1 >= arg.min) {
                         break;
                     } else {
@@ -144,7 +144,14 @@ export object Command {
 
         if (selectedCommand -> command) {
             command.state = this.state;
-            command.parse((this.state?.args ?? [<str>]).sub(this.state?.offset ?? 0));
+            [str] args = this.state?.args ?? [<str>];
+            int offset = this.state?.offset ?? 0;
+            command.parse(
+                if (offset < args.len())
+                    args.sub(this.state?.offset ?? 0)
+                else
+                    [<str>]
+            );
 
             return true;
         }
@@ -224,7 +231,7 @@ export object Command {
 
                 stderr.write("<{argument.name}");
 
-                if (argument.min > 1 or argument.max > 1) {
+                if (argument.min > 1 or argument.max == null or argument.max! > 1) {
                     stderr.write(", ...");
                 }
 
