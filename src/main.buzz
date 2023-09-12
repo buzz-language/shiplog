@@ -41,21 +41,14 @@ fun main([str] args) > void {
                 name = "help",
                 desc = "Show this help message",
                 aliases = [ "h" ],
-            }
+            },
+            "directory": Option{
+                name = "directory",
+                desc = "Specify where shiplog will leave (default is ~/.shiplog)",
+                aliases = [ "dir", "d" ],
+            },
         },
         commands = {
-            "init": Command{
-                name = "init",
-                desc = "Init shiplog database",
-                aliases = [ "i" ],
-                options = {
-                    "directory": Option{
-                        name = "directory",
-                        desc = "Specify where shiplog will leave (default is ~/.shiplog)",
-                        aliases = [ "dir", "d" ],
-                    },
-                },
-            },
             "add": Command{
                 name = "add",
                 desc = "Write a log entry",
@@ -75,6 +68,35 @@ fun main([str] args) > void {
                     },
                 },
             },
+            "list": Command{
+                name = "list",
+                desc = "List log entries",
+                arguments = {
+                    "filter": Argument{
+                        name = "filter",
+                        desc = "Filter entries. You can filter in or out tags by prefixing the tag name by `+` or `:` respectively.",
+                        min = 0,
+                        max = null,
+                    }
+                },
+                options = {
+                    "limit": Option{
+                        name = "limit",
+                        desc = "Limit number of printed entries",
+                        aliases = [ "n" ],
+                    },
+                    "before": Option{
+                        name = "before",
+                        desc = "Only show entry created before this date",
+                        aliases = [ "b" ],
+                    },
+                    "short": Option{
+                        name = "short",
+                        desc = "Short list with only titles and IDs",
+                        aliases = [ "s" ],
+                    }
+                }
+            }
         },
     };
 
@@ -87,16 +109,24 @@ fun main([str] args) > void {
 
     try {
         SQLite sqlite = SQLite.init();
-
-        Command initCommand = command.commands["init"]!;
-        if (initCommand.selected) {
-            Journal.init(sqlite, path: initCommand.options["directory"]?.value);
-            return;
-        }
+        Journal journal = Journal.init(sqlite, path: command.options["directory"]?.value);
 
         Command addCommand = command.commands["add"]!;
         if (addCommand.selected) {
-            getEntrySource(addCommand);
+            if (Entry.parse(getEntrySource(addCommand) ?? "") -> entry) {
+                journal.addEntry(entry);
+            } else {
+                print("Could not parse entry");
+            }
+
+            return;
+        }
+
+        Command listCommand = command.commands["list"]!;
+        if (listCommand.selected) {
+            journal.listEntries(Filter{}, short: listCommand.options["short"]?.value != null);
+
+            return;
         }
     } catch (SQLiteError error) {
         print("SQL error: {error.code} {error.message}");

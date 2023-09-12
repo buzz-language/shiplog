@@ -4,16 +4,18 @@ import "os";
 import "sqlite";
 import "errors";
 import "serialize";
+import "term";
+import "debug";
 
 export object Attribute {
-    int id,
+    int? id = null,
     str name,
     str @"type",
 
     static fun createTables(Database db) > void !> SQLiteError {
         | FIXME: calling with resolve should free surrounding function to require yield type
         resolve &(db.prepare(`
-            CREATE TABLE attributes (
+            CREATE TABLE IF NOT EXISTS attributes (
                 rowid INTEGER NOT NULL PRIMARY KEY,
                 name TEXT NOT NULL UNIQUE,
                 type TEXT NOT NULL
@@ -21,7 +23,7 @@ export object Attribute {
         `)).execute();
 
         resolve &(db.prepare(`
-            CREATE TABLE entries_attributes (
+            CREATE TABLE IF NOT EXISTS entries_attributes (
                 entry_id INTEGER NOT NULL, 
                 attribute_id INTEGER NOT NULL,
                 value TEXT NOT NULL,
@@ -34,8 +36,15 @@ export object Attribute {
 }
 
 export object Tag {
-    int id,
-    str tag,
+    int? id = null,
+    str label,
+
+    static fun fromBoxed([Boxed] propertyList) > Tag {
+        return Tag{
+            id = propertyList[0].integerValue(),
+            label = propertyList[1].stringValue(),
+        };
+    }
 
     static fun createTables(Database db) > void !> SQLiteError {
         resolve &(db.prepare(`
@@ -47,20 +56,28 @@ export object Tag {
             )
         `)).execute();
     }
+
+    fun colored() > str {
+        const int a = "a".byte();
+
+        const int r = ((this.label.lower().byte(0) - a) / 26) * 255;
+        const int g = ((this.label.lower().byte(1) - a) / 26) * 255;
+        const int b = ((this.label.lower().byte(2) - a) / 26) * 255;
+
+        return "\27[38;2;{r};{g};{b}m{this.label}\27[0m";
+    }
 }
 
 export object Entry {
-    int id,
-    str createdAt,
-    str? updatedAt,
+    int? id = null,
+    str? createdAt = null,
+    str? updatedAt = null,
     str content,
-    str? location,
+    str? location = null,
     [Tag] tags = [<Tag>],
-    [Attribute] attributes = [<Attribute>],
+    {str, str} attributes = {<str, str>},
 
-    static fun fromBoxed(Boxed rawEntry) > Entry {
-        [Boxed] propertyList = rawEntry.listValue();
-
+    static fun fromBoxed([Boxed] propertyList) > Entry {
         return Entry{
             id = propertyList[0].integerValue(),
             createdAt = propertyList[1].stringValue(),
@@ -82,7 +99,37 @@ export object Entry {
     }
 
     static fun parse(str args) > Entry? {
-        return null;
+        [str] tags = [<str>];
+        {str, str} attributes = {<str, str>};
+        str content = "";
+
+        foreach (str line in args.split("\n")) {
+            foreach (str word in line.split(" ")) {
+                str trimmed = word.trim();
+                str prefix = trimmed[0];
+
+                if (prefix == "+") {
+                    tags.append(trimmed.sub(1));
+                } else if ($"^([^=])+=([^\s]+)".match(trimmed) -> match) {
+                    attributes[match[1]] = match[2];
+                } else {
+                    content = "{content}{word} ";
+                }
+            }
+
+            content = content + "\n";
+        }
+
+        content = content.trim();
+
+        return Entry{
+            content = content,
+            tags = tags.map(
+                <Tag>,
+                fun (int index, str tag) -> Tag{ label = tag }
+            ),
+            attributes = attributes,
+        };
     }
 }
 
@@ -99,12 +146,15 @@ export object Journal {
 
     static fun init(SQLite sqlite, str? path = null) > Journal !> SQLiteError, FileSystemError, UnexpectedError {
         str dir = path ?? "{env("HOME")}/.shiplog";
+        bool initialized = exists("{dir}/journal.db");
 
-        try {
-            makeDirectory(dir);
-        } catch (FileSystemError err) {
-            if (err != FileSystemError.PathAlreadyExists) {
-                throw err;
+        if (!initialized) {
+            try {
+                makeDirectory(dir);
+            } catch (FileSystemError err) {
+                if (err != FileSystemError.PathAlreadyExists) {
+                    throw err;
+                }
             }
         }
 
@@ -113,9 +163,11 @@ export object Journal {
             flags: [OpenFlag.ReadWrite, OpenFlag.Create],
         );
 
-        Entry.createTables(db);
-        Tag.createTables(db);
-        Attribute.createTables(db);
+        if (!initialized) {
+            Entry.createTables(db);
+            Tag.createTables(db);
+            Attribute.createTables(db);
+        }
 
         Journal journal = Journal{
             db = db,
@@ -124,16 +176,67 @@ export object Journal {
         return journal;
     }
 
-    fun getEntries(Filter filter) > [Entry] !> SQLiteError {
-        Statement select = this.db.prepare(`
-            SELECT * FROM entries
-        `);
-
+    fun getEntries(Filter filter) > [Entry] > Entry? !> SQLiteError {
         [Entry] entries = [<Entry>];
-        foreach (Boxed entry in &select.execute()) {
-            entries.append(Entry.fromBoxed(entry));
+        foreach ([Boxed] entryRow in &this.db.prepare("SELECT rowid, created_at, updated_at, content, location FROM entries").execute()) {
+            const Entry entry = Entry.fromBoxed(entryRow);
+
+            foreach ([Boxed] tagRow in &this.db.prepare("SELECT rowid, tag FROM entries_tags where entry_id = {entry.id}").execute()) {
+                entry.tags.append(Tag.fromBoxed(tagRow));
+            }
+
+            entries.append(entry);
+            yield entry;
         }
 
         return entries;
+    }
+
+    fun listEntries(Filter filter, bool short = false) > void !> SQLiteError {
+        foreach (Entry entry in &this.getEntries(filter)) {
+            str line = entry.content;
+            if ($"([^\n]+)".match(entry.content) -> match) {
+                line = match[1];
+            }
+            line = line.sub(0, len: 80);
+
+            [str] tags = [<str>];
+            foreach (Tag tag in entry.tags) {
+                tags.append(tag.colored());
+            }
+
+            if (short) {
+                print(
+                    cyan("#{entry.id} ")
+                    + green(line)
+                    + " "
+                    + tags.join(" ")
+                );
+            } else {
+                print(
+                    cyan("#{entry.id} ")
+                    + green(line)
+                    + "\n"
+                    + dim(entry.updatedAt ?? entry.createdAt ?? "")
+                    + " "
+                    + tags.join(" ")
+                );
+            }
+        }
+    }
+
+    fun addEntry(Entry entry) > void !> SQLiteError {
+        resolve &this.db.prepare(`
+            INSERT INTO entries (content) VALUES ("{entry.content}")
+        `).execute();
+
+        entry.id = (resolve &this.db.prepare("SELECT LAST_INSERT_ROWID()").execute())[0]
+            .integerValue();
+        
+        foreach (Tag tag in entry.tags) {
+            resolve &this.db.prepare(`
+                INSERT INTO entries_tags (entry_id, tag) values ({entry.id}, "{tag.label}")
+            `).execute();
+        }
     }
 }

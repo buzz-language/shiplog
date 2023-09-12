@@ -1,0 +1,65 @@
+import "std";
+
+export enum(int) Color {
+    | attributes
+    reset      = 0,
+    bright     = 1,
+    dim        = 2,
+    underscore = 4,
+    blink      = 5,
+    reverse    = 7,
+    hidden     = 8,
+
+    | foreground
+    black   = 30,
+    red     = 31,
+    green   = 32,
+    yellow  = 33,
+    blue    = 34,
+    magenta = 35,
+    cyan    = 36,
+    white   = 37,
+
+    | background
+    onblack   = 40,
+    onred     = 41,
+    ongreen   = 42,
+    onyellow  = 43,
+    onblue    = 44,
+    onmagenta = 45,
+    oncyan    = 46,
+    onwhite   = 47,
+}
+
+export fun color(str text, Color color, bool reset = true) > str {
+    return "\27[{color.value}m{text}{if (reset) "\27[0m" else ""}";
+}
+
+export fun bright(str text) -> color(text, color: Color.bright);
+export fun dim(str text) -> color(text, color: Color.dim);
+export fun underscore(str text) -> color(text, color: Color.underscore);
+export fun blink(str text) -> color(text, color: Color.blink);
+export fun reverse(str text) -> color(text, color: Color.reverse);
+export fun hidden(str text) -> color(text, color: Color.hidden);
+export fun black(str text) -> color(text, color: Color.black);
+export fun red(str text) -> color(text, color: Color.red);
+export fun green(str text) -> color(text, color: Color.green);
+export fun yellow(str text) -> color(text, color: Color.yellow);
+export fun blue(str text) -> color(text, color: Color.blue);
+export fun magenta(str text) -> color(text, color: Color.magenta);
+export fun cyan(str text) -> color(text, color: Color.cyan);
+export fun white(str text) -> color(text, color: Color.white);
+export fun onblack(str text) -> color(text, color: Color.onblack);
+export fun onred(str text) -> color(text, color: Color.onred);
+export fun ongreen(str text) -> color(text, color: Color.ongreen);
+export fun onyellow(str text) -> color(text, color: Color.onyellow);
+export fun onblue(str text) -> color(text, color: Color.onblue);
+export fun onmagenta(str text) -> color(text, color: Color.onmagenta);
+export fun oncyan(str text) -> color(text, color: Color.oncyan);
+export fun onwhite(str text) -> color(text, color: Color.onwhite);
+
+test "color" {
+    print(color("hello world", color: Color.red));
+    print(color("hello world", color: Color.blue));
+    print(dim(blue("hello world") + yellow(" bye you")));
+}

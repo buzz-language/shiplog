@@ -20,6 +20,7 @@ zdef("sqlite3", `
     fn sqlite3_column_int(pStmt: *anyopaque, col: c_int) c_int;
     fn sqlite3_column_int64(pStmt: *anyopaque, col: c_int) i64;
     fn sqlite3_column_text(pStmt: *anyopaque, col: c_int) [*:0]const u8;
+    fn sqlite3_mprintf(str: [*:0]const u8) ?[*:0]const u8;
 `);
 
 enum(int) ResultCode {
@@ -99,9 +100,10 @@ export object Statement {
     ud db,
     ud stmt,
 
-    fun execute() > void > Boxed? !> SQLiteError {
+    fun execute() > [[Boxed]] > [Boxed]? !> SQLiteError {
         ResultCode code = ResultCode.Ok;
 
+        [[Boxed]] rows = [<[Boxed]>];
         while (code != ResultCode.Done) {
             code = ResultCode(sqlite3_step(this.stmt)) ?? ResultCode.Error;
             if (code != ResultCode.Ok and code != ResultCode.Row and code != ResultCode.Done) {
@@ -109,6 +111,10 @@ export object Statement {
                     code = code,
                     message = "Could not execute statement `{this.query}`: {code} {sqlite3_errmsg(this.db)}"
                 };
+            }
+
+            if (code == ResultCode.Done) {
+                break;
             }
 
             const int columnCount = sqlite3_column_count(this.stmt);
@@ -137,8 +143,13 @@ export object Statement {
                 }
             }
 
-            yield (Boxed.init(row) catch void);
+            const [Boxed] boxedRow = (Boxed.init(row) catch void).listValue();
+            rows.append(boxedRow);
+
+            yield boxedRow;
         }
+
+        return rows;
     }
 
     fun collect() > void {
@@ -200,6 +211,10 @@ export object SQLite {
         return SQLite{};
     }
 
+    static fun escape(str string) > str {
+        return sqlite3_mprintf(cstr(string)) ?? "";
+    } 
+
     fun collect() > void {
         sqlite3_shutdown();
     }
@@ -260,8 +275,7 @@ test "Testing sqlite" {
         SELECT rowid, name FROM test
     `);
 
-    foreach (Boxed row in &select.execute()) {
-        [Boxed] list = row.listValue();
-        print("{list[0].integerValue()}: {list[1].stringValue()}");
+    foreach ([Boxed] row in &select.execute()) {
+        print("{row[0].integerValue()}: {row[1].stringValue()}");
     }
 }
