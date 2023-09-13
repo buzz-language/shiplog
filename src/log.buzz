@@ -1,0 +1,83 @@
+import "std";
+import "term";
+import "io";
+
+export enum Level {
+    Debug,
+    Info,
+    Warning,
+    Error,
+}
+
+export object Logger {
+    static Logger? instance = null;
+
+    File out,
+    Level level,
+
+    fun log(str message, str? namespace = null, Level level) > void {
+        if (level.value < this.level.value) {
+            return;
+        }
+
+        try {
+            if (namespace -> space) {
+                this.out.write("[{space}] ");
+            }
+
+            if (this.out.isTTY()) {
+                if (level == Level.Debug) {
+                    this.out.write(blue("Debug"));
+                } else if (level == Level.Info) {
+                    this.out.write(green("Info"));
+                } else if (level == Level.Warning) {
+                    this.out.write(yellow("Warning"));
+                } else if (level == Level.Error) {
+                    this.out.write(red("Error"));
+                }
+            } else {
+                if (level == Level.Debug) {
+                    this.out.write("Debug");
+                } else if (level == Level.Info) {
+                    this.out.write("Info");
+                } else if (level == Level.Warning) {
+                    this.out.write("Warning");
+                } else if (level == Level.Error) {
+                    this.out.write("Error");
+                }
+            }
+
+            this.out.write(": {message}\n");
+        } catch {
+            print("{message}");
+        }
+    }
+
+    fun debug(str message, str? namespace) > void {
+        this.log(message, namespace: namespace, level: Level.Debug);
+    }
+
+    fun info(str message, str? namespace) > void {
+        this.log(message, namespace: namespace, level: Level.Info);
+    }
+
+    fun warning(str message, str? namespace) > void {
+        this.log(message, namespace: namespace, level: Level.Warning);
+    }
+
+    fun error(str message, str? namespace) > void {
+        this.log(message, namespace: namespace, level: Level.Error);
+    }
+}
+
+test "logger" {
+    Logger.instance = Logger{
+        out = stdout,
+        level = Level.Debug,
+    };
+
+    Logger.instance?.debug("hello world", namespace: "DEV");
+    Logger.instance?.info("hello world", namespace: "DEV");
+    Logger.instance?.warning("hello world", namespace: "DEV");
+    Logger.instance?.error("hello world", namespace: "DEV");
+}

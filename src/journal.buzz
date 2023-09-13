@@ -5,7 +5,6 @@ import "sqlite";
 import "errors";
 import "serialize";
 import "term";
-import "debug";
 
 export object Attribute {
     int? id = null,
@@ -58,13 +57,13 @@ export object Tag {
     }
 
     fun colored() > str {
-        const int a = "a".byte();
+        const float a = toFloat("a".byte());
 
-        const int r = ((this.label.lower().byte(0) - a) / 26) * 255;
-        const int g = ((this.label.lower().byte(1) - a) / 26) * 255;
-        const int b = ((this.label.lower().byte(2) - a) / 26) * 255;
+        const float r = ((toFloat(this.label.lower().byte(0)) - a) / 26.0) * 255.0;
+        const float g = ((toFloat(this.label.lower().byte(1)) - a) / 26.0) * 255.0;
+        const float b = ((toFloat(this.label.lower().byte(2)) - a) / 26.0) * 255.0;
 
-        return "\27[38;2;{r};{g};{b}m{this.label}\27[0m";
+        return "\27[38;2;{toInt(r)};{toInt(g)};{toInt(b)}m{this.label}\27[0m";
     }
 }
 
@@ -230,7 +229,7 @@ export object Journal {
             INSERT INTO entries (content) VALUES ("{entry.content}")
         `).execute();
 
-        entry.id = (resolve &this.db.prepare("SELECT LAST_INSERT_ROWID()").execute())[0]
+        entry.id = (resolve &this.db.prepare("SELECT LAST_INSERT_ROWID()").execute())[0][0]
             .integerValue();
         
         foreach (Tag tag in entry.tags) {

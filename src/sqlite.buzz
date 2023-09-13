@@ -2,6 +2,7 @@ import "ffi";
 import "std";
 import "buffer";
 import "serialize";
+import "log";
 
 zdef("sqlite3", `
     fn sqlite3_initialize() c_int;
@@ -101,6 +102,7 @@ export object Statement {
     ud stmt,
 
     fun execute() > [[Boxed]] > [Boxed]? !> SQLiteError {
+        Logger.instance?.debug("Executing query `{this.query}`", namespace: "SQL");
         ResultCode code = ResultCode.Ok;
 
         [[Boxed]] rows = [<[Boxed]>];
@@ -243,6 +245,8 @@ export object SQLite {
                 message = "Could not open database `{filename}`: {code}"
             };
         }
+
+        Logger.instance?.info("Database `{filename}` opened", namespace: "SQL");
 
         return Database {
             db = buffer.readUserData()!,

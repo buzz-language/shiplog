@@ -5,6 +5,7 @@ import "sqlite";
 import "errors";
 import "io";
 import "os";
+import "log";
 
 fun getEntrySource(Command command) > str? !> FileSystemError, ReadWriteError, UnexpectedError {
     if (command.options["file"]?.value -> file) {
@@ -33,6 +34,11 @@ fun getEntrySource(Command command) > str? !> FileSystemError, ReadWriteError, U
 }
 
 fun main([str] args) > void {
+    Logger.instance = Logger{
+        out = stderr,
+        level = Level.Debug,
+    };
+
     Command command = Command{
         name = "shiplog",
         desc = "⚓ A journal keeping cli tool",
@@ -129,8 +135,8 @@ fun main([str] args) > void {
             return;
         }
     } catch (SQLiteError error) {
-        print("SQL error: {error.code} {error.message}");
+        Logger.instance?.error("{error.code} {error.message}", namespace: "SQL");
     } catch (any error) {
-        print("Something went wrong: {error}");
+        Logger.instance?.error("Something went wrong: {error}");
     }
 }
