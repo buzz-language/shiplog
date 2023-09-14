@@ -96,6 +96,86 @@ enum(int) Type {
     Null    = 5,
 }
 
+export object Query {
+    str query = "",
+
+    fun branch(str keyword, str expression) > Query {
+        return Query{
+            query = "{this.query} {keyword.upper()} {expression}"
+        };
+    }
+
+    fun select([str] columns) > Query {
+        return this.branch("select", expression: columns.join(", "));
+    }
+
+    fun selectDistinct([str] columns) > Query {
+        return this.branch("select distinct", expression: columns.join(", "));
+    }
+
+    fun deleteFrom(str expression) > Query {
+        return this.branch("delete from", expression: expression);
+    }
+
+    fun insertInto(str table, [str] columns) > Query {
+        return this.branch("insert into", expression: "{table} ({columns.join(", ")})");
+    }
+
+    fun @"from"([str] tables) > Query {
+        return this.branch("from", expression: tables.join(", "));
+    }
+
+    fun where([str] conditions) > Query {
+        if (conditions.len() == 0) {
+            return this;
+        }
+
+        Query where = Query{
+            query = "{this.query} WHERE "
+        };
+
+        foreach (int i, str condition in conditions) {
+            where.query = "{where.query} {condition}";
+
+            if (condition.len() > 1 and i < conditions.len() - 1) {
+                where.query = "{where.query} AND";
+            }
+        }
+
+        return where;
+    }
+
+    fun like(str column, str expression) > Query {
+        return Query{
+            query = "{this.query} {column} LIKE {expression}",
+        };
+    }
+
+    fun orderBy(str expression) > Query {
+        return this.branch("order by", expression: expression);
+    }
+
+    fun groupBy(str expression) > Query {
+        return this.branch("group by", expression: expression);
+    }
+
+    fun values([str] values) > Query {
+        return this.branch("values", expression: "({values.join(", ")})");
+    }
+
+    fun limit(int limit) > Query {
+        return this.branch("limit", expression: "{limit}");
+    }
+
+    fun prepare(Database db) > Statement !> SQLiteError {
+        return db.prepare(this);
+    }
+
+    fun execute(Database db) > [[Boxed]] > [Boxed]? !> SQLiteError {
+        return db.prepare(this).execute();
+    }
+}
+
 export object Statement {
     str query,
     ud db,
@@ -172,7 +252,11 @@ export object Database {
         }
     }
 
-    fun prepare(str query) > Statement !> SQLiteError {
+    fun prepare(Query query) > Statement !> SQLiteError {
+        return this.prepareRaw(query.query);
+    }
+
+    fun prepareRaw(str query) > Statement !> SQLiteError {
         Buffer buffer = Buffer.init();
         buffer.writeUserData(toUd(0)) catch void;
 
@@ -188,7 +272,7 @@ export object Database {
         if (code != ResultCode.Ok) {
             throw SQLiteError{
                 code = code,
-                message = "Could not prepare query `{query}`: {code} {sqlite3_errmsg(this.db)}"
+                message = "Could not prepareRaw query `{query}`: {code} {sqlite3_errmsg(this.db)}"
             };
         }
 
@@ -259,7 +343,7 @@ test "Testing sqlite" {
 
     Database database = sqlite.open("./test.db", flags: [OpenFlag.ReadWrite, OpenFlag.Create]);
 
-    Statement statement = database.prepare(`
+    Statement statement = database.prepareRaw(`
         CREATE TABLE IF NOT EXISTS test (
             name TEXT NOT NULL
         )
@@ -268,16 +352,16 @@ test "Testing sqlite" {
     statement.execute();
 
     foreach (str name in ["john", "joe", "janet", "joline"]) {
-        Statement insert = database.prepare(`
-            INSERT INTO test (name) VALUES ('{name}')
-        `);
-
-        insert.execute();
+        Query{}
+            .insertInto("test", columns: [ "name" ])
+            .values([ "'{name}'" ])
+            .execute(database);
     }
 
-    Statement select = database.prepare(`
-        SELECT rowid, name FROM test
-    `);
+    Statement select = Query{}
+        .select([ "rowid", "name" ])
+        .@"from"([ "test" ])
+        .prepare(database);
 
     foreach ([Boxed] row in &select.execute()) {
         print("{row[0].integerValue()}: {row[1].stringValue()}");

@@ -90,11 +90,24 @@ fun main([str] args) > void {
                         name = "limit",
                         desc = "Limit number of printed entries",
                         aliases = [ "n" ],
+                        hasValue = true,
                     },
                     "before": Option{
                         name = "before",
                         desc = "Only show entry created before this date",
                         aliases = [ "b" ],
+                        hasValue = true,
+                    },
+                    "after": Option{
+                        name = "after",
+                        desc = "Only show entry created after this date",
+                        aliases = [ "a" ],
+                        hasValue = true,
+                    },
+                    "at": Option{
+                        name = "at",
+                        desc = "Only show entry created at this date",
+                        hasValue = true,
                     },
                     "short": Option{
                         name = "short",
@@ -130,7 +143,18 @@ fun main([str] args) > void {
 
         Command listCommand = command.commands["list"]!;
         if (listCommand.selected) {
-            journal.listEntries(Filter{}, short: listCommand.options["short"]?.value != null);
+            Filter filter = Filter.parse(listCommand.arguments["filter"]?.value? ?? [<str>]);
+            filter.before = listCommand.options["before"]?.value;
+            filter.after = listCommand.options["after"]?.value;
+            filter.at = listCommand.options["at"]?.value;
+            if (listCommand.options["limit"]?.value -> limit) {
+                filter.limit = parseInt(limit);
+            }
+
+            journal.listEntries(
+                filter,
+                short: listCommand.options["short"]?.value != null
+            );
 
             return;
         }
