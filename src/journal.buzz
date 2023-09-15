@@ -321,10 +321,15 @@ export object Journal {
         }
     }
 
-    fun deleteEntry(Entry entry) > void !> SQLiteError {
+    fun deleteEntry(int id) > void !> SQLiteError {
         resolve &Query{}
             .deleteFrom("entries")
-            .where([ "rowid = {entry.id}" ])
+            .where([ "rowid = {id}" ])
+            .execute(this.db);
+        
+        resolve &Query{}
+            .deleteFrom("entries_tags")
+            .where([ "entry_id = {id}" ])
             .execute(this.db);
     }
 }

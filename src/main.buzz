@@ -115,6 +115,19 @@ fun main([str] args) > void {
                         aliases = [ "s" ],
                     }
                 }
+            },
+            "delete": Command {
+                name = "delete",
+                desc = "Delete entry",
+                aliases = [ "del", "d" ],
+                arguments = {
+                    "id": Argument{
+                        name = "id",
+                        desc = "Entry ID",
+                        min = 1,
+                        max = 1,
+                    }
+                }
             }
         },
     };
@@ -143,7 +156,7 @@ fun main([str] args) > void {
 
         Command listCommand = command.commands["list"]!;
         if (listCommand.selected) {
-            Filter filter = Filter.parse(listCommand.arguments["filter"]?.value? ?? [<str>]);
+            Filter filter = Filter.parse(listCommand.arguments["filter"]?.value ?? [<str>]);
             filter.before = listCommand.options["before"]?.value;
             filter.after = listCommand.options["after"]?.value;
             filter.at = listCommand.options["at"]?.value;
@@ -155,6 +168,17 @@ fun main([str] args) > void {
                 filter,
                 short: listCommand.options["short"]?.value != null
             );
+
+            return;
+        }
+
+        Command deleteCommand = command.commands["delete"]!;
+        if (deleteCommand.selected) {
+            if (parseInt(deleteCommand.arguments["id"]!.value![0]) -> id) {
+                journal.deleteEntry(id);
+            } else {
+                print("Entry ID must be integer");
+            }
 
             return;
         }
