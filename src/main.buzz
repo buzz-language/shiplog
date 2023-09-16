@@ -34,11 +34,6 @@ fun getEntrySource(Command command) > str? !> FileSystemError, ReadWriteError, U
 }
 
 fun main([str] args) > void {
-    Logger.instance = Logger{
-        out = stderr,
-        level = Level.Debug,
-    };
-
     Command command = Command{
         name = "shiplog",
         desc = "⚓ A journal keeping cli tool",
@@ -53,6 +48,11 @@ fun main([str] args) > void {
                 desc = "Specify where shiplog will leave (default is ~/.shiplog)",
                 aliases = [ "dir", "d" ],
             },
+            "verbose": Option{
+                name = "verbose",
+                desc = "Show debug logs",
+                aliases = [ "v" ]
+            }
         },
         commands = {
             "add": Command{
@@ -128,11 +128,51 @@ fun main([str] args) > void {
                         max = 1,
                     }
                 }
+            },
+            "modify": Command{
+                name = "modify",
+                desc = "Modify entry",
+                aliases = [ "mod", "m" ],
+                arguments = {
+                    "id": Argument{
+                        name = "id",
+                        desc = "Entry ID",
+                        min = 1,
+                        max = 1,
+                    },
+                    "entry": Argument{
+                        name = "entry",
+                        desc = "Any word prefixed by `+` will be added as a tag. Any word prefixed by `:` will be considered a tag to be deleted.",
+                        min = 0,
+                        max = null,
+                    }
+                }
+            },
+            "view": Command{
+                name = "view",
+                desc = "View entry",
+                aliases = [ "v" ],
+                arguments = {
+                    "id": Argument{
+                        name = "id",
+                        desc = "Entry ID",
+                        min = 1,
+                        max = 1,
+                    },
+                }
             }
         },
     };
 
     command.parse(args);
+
+    Logger.instance = Logger{
+        out = stderr,
+        level = if (command.options["verbose"]?.value != null)
+            Level.Debug
+        else
+            Level.Error,
+    };
 
     if (command.options["help"]?.value != null) {
         command.help();
