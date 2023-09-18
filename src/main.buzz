@@ -7,7 +7,7 @@ import "io";
 import "os";
 import "log";
 
-fun getEntrySource(Command command) > str? !> FileSystemError, ReadWriteError, UnexpectedError {
+fun getEntrySource(Command command) > str? !> SQLiteError, FileSystemError, ReadWriteError, UnexpectedError {
     if (command.options["file"]?.value -> file) {
         return File.open(file, mode: FileMode.read).readAll();
     }
@@ -23,8 +23,6 @@ fun getEntrySource(Command command) > str? !> FileSystemError, ReadWriteError, U
     }
 
     const str tmpFile = tmpFilename("shiplog");
-
-    | TODO: overwrite existing entry when id provided
 
     if (execute([env("EDITOR") ?? "vi", tmpFile]) == 0) {
         return File.open(tmpFile, mode: FileMode.read).readAll();
@@ -164,7 +162,7 @@ fun main([str] args) > void {
         },
     };
 
-    command.parse(args);
+    _ = command.parse(args);
 
     Logger.instance = Logger{
         out = stderr,
@@ -192,6 +190,39 @@ fun main([str] args) > void {
             }
 
             return;
+        }
+
+        Command modifyCommand = command.commands["modify"]!;
+        if (modifyCommand.selected) {
+            const str entryId = modifyCommand.arguments["id"]?.value?[0] ?? "";
+            Filter filter = Filter.parse(modifyCommand.arguments["entry"]?.value ?? [<str>]);
+            filter.id = entryId;
+
+            Entry? entry = resolve &journal.getEntry(parseInt(entryId) ?? 0);
+
+            if (entry == null) {
+                print("Entry #{filter.id} does not exists");
+                return;
+            }
+
+            if (filter.isEmpty()) {
+                const str tmpFile = tmpFilename("shiplog");
+
+                const File file = File.open(tmpFile, mode: FileMode.write);
+                file.write(entry?.expr() ?? "");
+                file.close();
+
+                if (execute([env("EDITOR") ?? "vi", tmpFile]) == 0) {
+                    filter = Filter.parse(
+                        File.open(tmpFile, mode: FileMode.read)
+                            .readAll()
+                            .split(" ")
+                    );
+                    filter.id = entryId;
+                }
+            }
+
+            journal.modifyEntry(filter);
         }
 
         Command listCommand = command.commands["list"]!;

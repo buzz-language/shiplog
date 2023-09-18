@@ -7,13 +7,13 @@ import "serialize";
 import "term";
 
 export object Attribute {
-    int? id = null,
+    int? id,
     str name,
     str @"type",
 
     static fun createTables(Database db) > void !> SQLiteError {
         | FIXME: calling with resolve should free surrounding function to require yield type
-        resolve &(db.prepareRaw(`
+        _ = resolve &(db.prepareRaw(`
             CREATE TABLE IF NOT EXISTS attributes (
                 rowid INTEGER NOT NULL PRIMARY KEY,
                 name TEXT NOT NULL UNIQUE,
@@ -21,7 +21,7 @@ export object Attribute {
             )
         `)).execute();
 
-        resolve &(db.prepareRaw(`
+        _ = resolve &(db.prepareRaw(`
             CREATE TABLE IF NOT EXISTS entries_attributes (
                 entry_id INTEGER NOT NULL, 
                 attribute_id INTEGER NOT NULL,
@@ -35,7 +35,7 @@ export object Attribute {
 }
 
 export object Tag {
-    int? id = null,
+    int? id,
     str label,
 
     static fun fromBoxed([Boxed] propertyList) > Tag {
@@ -46,7 +46,7 @@ export object Tag {
     }
 
     static fun createTables(Database db) > void !> SQLiteError {
-        resolve &(db.prepareRaw(`
+        _ = resolve &(db.prepareRaw(`
             CREATE TABLE IF NOT EXISTS entries_tags (
                 entry_id INTEGER NOT NULL, 
                 tag TEXT NOT NULL,
@@ -68,11 +68,11 @@ export object Tag {
 }
 
 export object Entry {
-    int? id = null,
-    str? createdAt = null,
-    str? updatedAt = null,
+    int? id,
+    str? createdAt,
+    str? updatedAt,
     str content,
-    str? location = null,
+    str? location,
     [Tag] tags = [<Tag>],
     {str, str} attributes = {<str, str>},
 
@@ -87,7 +87,7 @@ export object Entry {
     }
 
     static fun createTables(Database db) > void !> SQLiteError {
-        resolve &(db.prepareRaw(`
+        _ = resolve &(db.prepareRaw(`
             CREATE TABLE IF NOT EXISTS entries (
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,
                 updated_at TIMESTAMP,
@@ -125,23 +125,45 @@ export object Entry {
             content = content,
             tags = tags.map(
                 <Tag>,
-                fun (int index, str tag) -> Tag{ label = tag }
+                fun (int _, str tag) -> Tag{ label = tag }
             ),
             attributes = attributes,
         };
     }
+
+    fun expr() > str {
+        str expression = "";
+        foreach (str key, str value in this.attributes) {
+            expression = "{expression}{key}={value}\n";
+        }
+
+        foreach (Tag tag in this.tags) {
+            expression = "{expression}+{tag.label}\n";
+        }
+
+        return "{expression}{this.content}";
+    }
 }
 
 export object Filter {
+    int? id,
     [str] tags = [<str>],
     [str] excludedTags = [<str>],
     {str, str} attributes = {<str, str>},
     {str, str} excludedAttributes = {<str, str>},
-    str? content = null,
-    str? before = null,
-    str? after = null,
-    str? at = null,
-    int? limit = null,
+    str? content,
+    str? before,
+    str? after,
+    str? at,
+    int? limit,
+
+    fun isEmpty() > bool {
+        return this.tags.len() == 0
+            and this.excludedTags.len() == 0
+            and this.attributes.size() == 0
+            and this.excludedTags.size() == 0
+            and this.content == null;
+    }
 
     static fun parse([str] args) > Filter {
         Filter filter = Filter{};
@@ -172,7 +194,7 @@ export object Filter {
 export object Journal {
     Database db,
 
-    static fun init(SQLite sqlite, str? path = null) > Journal !> SQLiteError, FileSystemError, UnexpectedError {
+    static fun init(SQLite sqlite, str? path) > Journal !> SQLiteError, FileSystemError, UnexpectedError {
         str dir = path ?? "{env("HOME")}/.shiplog";
         bool initialized = exists("{dir}/journal.db");
 
@@ -204,6 +226,32 @@ export object Journal {
         return journal;
     }
 
+    fun getEntry(int id) > Entry? !> SQLiteError {
+        const [[Boxed]] result = resolve &Query{}
+            .select([ "rowid", "created_at", "updated_at", "content", "location" ])
+            .@"from"([ "entries" ])
+            .where([ "rowid = {id}" ])
+            .execute(this.db);
+        
+        if (result.len() == 0) {
+            return null;
+        }
+
+        const Entry entry = Entry.fromBoxed(result[0]);
+
+        Statement selectTags = Query{}
+            .select([ "rowid", "tag" ])
+            .@"from"([ "entries_tags " ])
+            .where([ "entry_id = {entry.id}" ])
+            .prepare(this.db);
+
+        foreach ([Boxed] tagRow in &selectTags.execute()) {
+            entry.tags.append(Tag.fromBoxed(tagRow));
+        }
+
+        return entry;
+    }
+
     fun getEntries(Filter filter) > [Entry] > Entry? !> SQLiteError {
         [Entry] entries = [<Entry>];
         Query selectEntriesQuery = Query{}
@@ -216,16 +264,20 @@ export object Journal {
             conditions.append("content LIKE '%{content}%'");
         }
 
+        if (filter.id -> id) {
+            conditions.append("rowid = {id}");
+        }
+
         if (filter.tags.len() > 0) {
             str tagFilter = filter.tags
-                .map(<str>, fun (int i, str tag) -> "'{tag}'")
+                .map(<str>, fun (int _, str tag) -> "'{tag}'")
                 .join(", ");
             conditions.append("rowid IN (SELECT entry_id FROM entries_tags WHERE tag IN ({tagFilter}))");
         }
 
         if (filter.excludedTags.len() > 0) {
             str tagFilter = filter.excludedTags
-                .map(<str>, fun (int i, str tag) -> "'{tag}'")
+                .map(<str>, fun (int _, str tag) -> "'{tag}'")
                 .join(", ");
             conditions.append("rowid NOT IN (SELECT entry_id FROM entries_tags WHERE tag IN ({tagFilter}))");
         }
@@ -263,7 +315,7 @@ export object Journal {
             }
 
             entries.append(entry);
-            yield entry;
+            _ = yield entry;
         }
 
         return entries;
@@ -303,7 +355,7 @@ export object Journal {
     }
 
     fun addEntry(Entry entry) > void !> SQLiteError {
-        resolve &Query{}
+        _ = resolve &Query{}
             .insertInto("entries", columns: [ "content" ])
             .values([ "'{entry.content}'" ])
             .execute(this.db);
@@ -314,20 +366,56 @@ export object Journal {
             .integerValue();
         
         foreach (Tag tag in entry.tags) {
-            resolve &Query{}
+            _ = resolve &Query{}
                 .insertInto("entries_tags", columns: [ "entry_id", "tag" ])
                 .values([ "{entry.id}", "'{tag.label}'" ])
                 .execute(this.db);
         }
     }
 
+    fun modifyEntry(Filter filter) > void !> SQLiteError {
+        if (filter.id == null) {
+            return;
+        }
+
+        if (filter.content -> content) {
+            _ = resolve &Query{}
+                .update("entries")
+                .set([ "content = '{content}'" ])
+                .where([ "rowid = {filter.id}" ])
+                .execute(this.db);
+        }
+
+        foreach (str tag in filter.tags) {
+            _ = resolve &Query{}
+                .replaceInto("entries_tags", columns: [ "entry_id", "tags" ])
+                .values([ "{filter.id}", "'{tag}'" ])
+                .where([ "entry_id = {filter.id}" ])
+                .execute(this.db);
+        }
+
+        if (filter.excludedTags.len() > 0) {
+            str tags = filter.excludedTags.map(
+                <str>,
+                fun (int _, str tag) -> "'{tag}'",
+            ).join(", ");
+
+            _ = resolve &Query{}
+                .deleteFrom("entries_tags")
+                .where([ "entry_id = {filter.id}", "tag IN ({tags})" ])
+                .execute(this.db);
+        }
+
+        | TODO: attributes
+    }
+
     fun deleteEntry(int id) > void !> SQLiteError {
-        resolve &Query{}
+        _ = resolve &Query{}
             .deleteFrom("entries")
             .where([ "rowid = {id}" ])
             .execute(this.db);
         
-        resolve &Query{}
+        _ = resolve &Query{}
             .deleteFrom("entries_tags")
             .where([ "entry_id = {id}" ])
             .execute(this.db);

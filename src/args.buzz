@@ -7,7 +7,7 @@ export object Option {
     str desc,
     [str] aliases = [<str>],
     bool hasValue = false,
-    str? value = null,
+    str? value,
 }
 
 export object Argument {
@@ -15,8 +15,8 @@ export object Argument {
     str desc,
     int min = 1,
     int? max = 1,
-    [str]? value = null,
-    [str]? defaultValue = null,
+    [str]? value,
+    [str]? defaultValue,
 }
 
 object ParseState {
@@ -28,7 +28,7 @@ object ParseState {
 }
 
 object ParseError {
-    str? message = null,
+    str? message,
 }
 
 export object Command {
@@ -39,7 +39,7 @@ export object Command {
     {str, Option} options = {<str, Option>},
     {str, Argument} arguments = {<str, Argument>},
     {str, Command} commands = {<str, Command>},
-    ParseState? state = null,
+    ParseState? state,
 
     fun clear() > void {
         this.selected = false;
@@ -146,7 +146,7 @@ export object Command {
             command.state = this.state;
             [str] args = this.state?.args ?? [<str>];
             int offset = this.state?.offset ?? 0;
-            command.parse(
+            _ = command.parse(
                 if (offset < args.len())
                     args.sub(this.state?.offset ?? 0)
                 else

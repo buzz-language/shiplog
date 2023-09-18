@@ -121,6 +121,10 @@ export object Query {
         return this.branch("insert into", expression: "{table} ({columns.join(", ")})");
     }
 
+    fun replaceInto(str table, [str] columns) > Query {
+        return this.branch("replace into", expression: "{table} ({columns.join(", ")})");
+    }
+
     fun @"from"([str] tables) > Query {
         return this.branch("from", expression: tables.join(", "));
     }
@@ -143,6 +147,14 @@ export object Query {
         }
 
         return where;
+    }
+
+    fun update(str table) > Query {
+        return this.branch("update", expression: table);
+    }
+
+    fun set([str] columns) > Query {
+        return this.branch("set", expression: columns.join(", "));
     }
 
     fun like(str column, str expression) > Query {
@@ -228,14 +240,14 @@ export object Statement {
             const [Boxed] boxedRow = (Boxed.init(row) catch void).listValue();
             rows.append(boxedRow);
 
-            yield boxedRow;
+            _ = yield boxedRow;
         }
 
         return rows;
     }
 
     fun collect() > void {
-        sqlite3_finalize(this.stmt);
+        _ = sqlite3_finalize(this.stmt);
     }
 }
 
@@ -302,7 +314,7 @@ export object SQLite {
     } 
 
     fun collect() > void {
-        sqlite3_shutdown();
+        _ = sqlite3_shutdown();
     }
 
     fun open(str filename, [OpenFlag] flags) > Database !> SQLiteError {

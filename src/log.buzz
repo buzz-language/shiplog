@@ -10,12 +10,12 @@ export enum Level {
 }
 
 export object Logger {
-    static Logger? instance = null;
+    static Logger? instance;
 
     File out,
     Level level,
 
-    fun log(str message, str? namespace = null, Level level) > void {
+    fun log(str message, str? namespace, Level level) > void {
         if (level.value < this.level.value) {
             return;
         }
