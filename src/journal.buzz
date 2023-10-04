@@ -123,8 +123,7 @@ export object Entry {
 
         return Entry{
             content = content,
-            tags = tags.map(
-                <Tag>,
+            tags = tags.map::<Tag>(
                 fun (int _, str tag) -> Tag{ label = tag }
             ),
             attributes = attributes,
@@ -270,14 +269,14 @@ export object Journal {
 
         if (filter.tags.len() > 0) {
             str tagFilter = filter.tags
-                .map(<str>, fun (int _, str tag) -> "'{tag}'")
+                .map::<str>(fun (int _, str tag) -> "'{tag}'")
                 .join(", ");
             conditions.append("rowid IN (SELECT entry_id FROM entries_tags WHERE tag IN ({tagFilter}))");
         }
 
         if (filter.excludedTags.len() > 0) {
             str tagFilter = filter.excludedTags
-                .map(<str>, fun (int _, str tag) -> "'{tag}'")
+                .map::<str>(fun (int _, str tag) -> "'{tag}'")
                 .join(", ");
             conditions.append("rowid NOT IN (SELECT entry_id FROM entries_tags WHERE tag IN ({tagFilter}))");
         }
@@ -395,8 +394,7 @@ export object Journal {
         }
 
         if (filter.excludedTags.len() > 0) {
-            str tags = filter.excludedTags.map(
-                <str>,
+            str tags = filter.excludedTags.map::<str>(
                 fun (int _, str tag) -> "'{tag}'",
             ).join(", ");
 

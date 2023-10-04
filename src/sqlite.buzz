@@ -2,7 +2,6 @@ import "ffi";
 import "std";
 import "buffer";
 import "serialize";
-import "log";
 
 zdef("sqlite3", `
     fn sqlite3_initialize() c_int;
@@ -194,7 +193,6 @@ export object Statement {
     ud stmt,
 
     fun execute() > [[Boxed]] > [Boxed]? !> SQLiteError {
-        Logger.instance?.debug("Executing query `{this.query}`", namespace: "SQL");
         ResultCode code = ResultCode.Ok;
 
         [[Boxed]] rows = [<[Boxed]>];
@@ -255,13 +253,7 @@ export object Database {
     ud db,
 
     fun collect() > void {
-        const ResultCode code = ResultCode(sqlite3_close_v2(this.db)) ?? ResultCode.Error;
-        if (code != ResultCode.Ok) {
-            throw SQLiteError{
-                code = code,
-                message = "Could not close database: {code} {sqlite3_errmsg(this.db)}"
-            };
-        }
+        _ = sqlite3_close_v2(this.db);
     }
 
     fun prepare(Query query) > Statement !> SQLiteError {
@@ -341,8 +333,6 @@ export object SQLite {
                 message = "Could not open database `{filename}`: {code}"
             };
         }
-
-        Logger.instance?.info("Database `{filename}` opened", namespace: "SQL");
 
         return Database {
             db = buffer.readUserData()!,
