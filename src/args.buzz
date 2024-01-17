@@ -36,9 +36,9 @@ export object Command {
     str desc,
     bool selected = false,
     [str] aliases = [<str>],
-    {str, Option} options = {<str, Option>},
-    {str, Argument} arguments = {<str, Argument>},
-    {str, Command} commands = {<str, Command>},
+    {str: Option} options = {<str: Option>},
+    {str: Argument} arguments = {<str: Argument>},
+    {str: Command} commands = {<str: Command>},
     ParseState? state,
 
     fun clear() > void {

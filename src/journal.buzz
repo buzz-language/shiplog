@@ -74,7 +74,7 @@ export object Entry {
     str content,
     str? location,
     [Tag] tags = [<Tag>],
-    {str, str} attributes = {<str, str>},
+    {str: str} attributes = {<str: str>},
 
     static fun fromBoxed([Boxed] propertyList) > Entry {
         return Entry{
@@ -99,7 +99,7 @@ export object Entry {
 
     static fun parse(str args) > Entry? {
         [str] tags = [<str>];
-        {str, str} attributes = {<str, str>};
+        {str: str} attributes = {<str: str>};
         str content = "";
 
         foreach (str line in args.split("\n")) {
@@ -148,8 +148,8 @@ export object Filter {
     int? id,
     [str] tags = [<str>],
     [str] excludedTags = [<str>],
-    {str, str} attributes = {<str, str>},
-    {str, str} excludedAttributes = {<str, str>},
+    {str: str} attributes = {<str: str>},
+    {str: str} excludedAttributes = {<str: str>},
     str? content,
     str? before,
     str? after,
