@@ -1,6 +1,8 @@
-import "std";
-import "term";
-import "io";
+namespace shiplog\log;
+
+import "buzz:std";
+import "buzz:io";
+import "pkg:shiplog/term" as _;
 
 export enum Level {
     Debug,
@@ -10,74 +12,71 @@ export enum Level {
 }
 
 export object Logger {
-    static Logger? instance;
+    static instance: Logger?;
 
-    File out,
-    Level level,
+    into: io\File,
+    level: Level,
 
-    fun log(str message, str? namespace, Level level) > void {
+    fun log(message: str, scope: str? = null, level: Level) > void {
         if (level.value < this.level.value) {
             return;
         }
 
         try {
-            if (namespace -> space) {
-                this.out.write("[{space}] ");
+            if (scope -> space) {
+                this.into.write("[{space}] ");
             }
 
-            if (this.out.isTTY()) {
-                if (level == Level.Debug) {
-                    this.out.write(blue("Debug"));
-                } else if (level == Level.Info) {
-                    this.out.write(green("Info"));
-                } else if (level == Level.Warning) {
-                    this.out.write(yellow("Warning"));
-                } else if (level == Level.Error) {
-                    this.out.write(red("Error"));
+            if (this.into.isTTY()) {
+                match (level) {
+                    .Debug -> this.into.write(blue("Debug")),
+                    .Info -> this.into.write(green("Info")),
+                    .Warning -> this.into.write(yellow("Warning")),
+                    .Error -> this.into.write(red("Error")),
                 }
             } else {
                 if (level == Level.Debug) {
-                    this.out.write("Debug");
+                    this.into.write("Debug");
                 } else if (level == Level.Info) {
-                    this.out.write("Info");
+                    this.into.write("Info");
                 } else if (level == Level.Warning) {
-                    this.out.write("Warning");
+                    this.into.write("Warning");
                 } else if (level == Level.Error) {
-                    this.out.write("Error");
+                    this.into.write("Error");
                 }
             }
 
-            this.out.write(": {message}\n");
+            this.into.write(": {message}\n");
         } catch {
-            print("{message}");
+            std\print("{message}");
         }
     }
 
-    fun debug(str message, str? namespace) > void {
-        this.log(message, namespace: namespace, level: Level.Debug);
+    fun debug(message: str, scope: str? = null) > void {
+        this.log(message, scope, level: .Debug);
     }
 
-    fun info(str message, str? namespace) > void {
-        this.log(message, namespace: namespace, level: Level.Info);
+    fun info(message: str, scope: str? = null) > void {
+        this.log(message, scope, level: .Info);
     }
 
-    fun warning(str message, str? namespace) > void {
-        this.log(message, namespace: namespace, level: Level.Warning);
+    fun warning(message: str, scope: str? = null) > void {
+        this.log(message, scope, level: .Warning);
     }
 
-    fun error(str message, str? namespace) > void {
-        this.log(message, namespace: namespace, level: Level.Error);
+    fun error(message: str, scope: str? = null) > void {
+        this.log(message, scope, level: .Error);
     }
 }
 
 test "logger" {
-    Logger.instance = Logger{
-        out = stdout,
+    Logger.instance = .{
+        into = io\stdout,
         level = Level.Debug,
     };
 
-    Logger.instance?.debug("hello world", namespace: "DEV");
-    Logger.instance?.info("hello world", namespace: "DEV");
-    Logger.instance?.warning("hello world", namespace: "DEV");
-    Logger.instance?.error("hello world", namespace: "DEV");
+    Logger.instance?.debug("hello world", scope: "DEV");
+    Logger.instance?.info("hello world", scope: "DEV");
+    Logger.instance?.warning("hello world", scope: "DEV");
+    Logger.instance?.error("hello world", scope: "DEV");
 }

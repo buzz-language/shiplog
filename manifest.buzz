@@ -1,0 +1,8 @@
+.{
+    name = "shiplog",
+    version = .{ 1, 0, 0 },
+    source = .{ url = "https://github.com/buzz-language/shiplog.git" },
+    description = "A journal keeping cli tools",
+    authors = [ "giann <giann008@gmail.com>" ],
+    license = "MIT",
+}

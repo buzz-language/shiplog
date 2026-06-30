@@ -1,90 +1,88 @@
-import "std";
-import "os";
-import "io";
+namespace shiplog\args;
+
+import "buzz:std";
+import stderr from "buzz:io";
 
 export object Option {
-    str name,
-    str desc,
-    [str] aliases = [<str>],
-    bool hasValue = false,
-    str? value,
+    name: str,
+    desc: str,
+    aliases: [str] = [],
+    hasValue: bool = false,
+    value: str?,
 }
 
 export object Argument {
-    str name,
-    str desc,
-    int min = 1,
-    int? max = 1,
-    [str]? value,
-    [str]? defaultValue,
+    name: str,
+    desc: str,
+    min: int = 1,
+    max: int? = 1,
+    value: [str]?,
+    defaultValue: [str]?,
 }
 
 object ParseState {
-    int arg = 0,
-    int offset = 0,
-    bool argParsed = false,
-    [Argument] mandatoryArguments = [<Argument>],
-    [str] args,
+    arg: int = 0,
+    offset: int = 0,
+    argParsed: bool = false,
+    mandatoryArguments: [mut Argument] = [],
+    args: [str],
 }
 
 object ParseError {
-    str? message,
+    message: str?,
 }
 
 export object Command {
-    str name,
-    str desc,
-    bool selected = false,
-    [str] aliases = [<str>],
-    {str: Option} options = {<str: Option>},
-    {str: Argument} arguments = {<str: Argument>},
-    {str: Command} commands = {<str: Command>},
-    ParseState? state,
+    name: str,
+    desc: str,
+    selected: bool = false,
+    aliases: [str] = [],
+    options: {str: mut Option} = {},
+    arguments: {str: mut Argument} = {},
+    commands: {str: mut Command} = {},
+    state: mut ParseState?,
 
-    fun clear() > void {
+    mut fun clear() > void {
         this.selected = false;
         this.state = null;
 
-        foreach (Option option in this.options) {
+        foreach (option in this.options) {
             option.value = null;
         }
 
-        foreach (Argument argument in this.arguments) {
+        foreach (argument in this.arguments) {
             argument.value = null;
         }
 
-        foreach (Command command in this.commands) {
+        foreach (command in this.commands) {
             command.clear();
         }
     }
 
-    fun consumeOption() > void !> ParseError {
-        assert(this.state != null, message: "No state");
+    mut fun consumeOption() > void !> ParseError {
+        std\assert(this.state != null, message: "No state");
 
-        const str current = this.state!.args[this.state!.offset];
+        final current = this.state!.args[this.state!.offset];
 
-        Option? matchingOption = null;
-        foreach (Option option in this.options) {
+        foreach (option in this.options) {
             if (current.startsWith("--")) {
-                if (option.name == current.sub(2)) {
-                    matchingOption = option;
-                    break;
+                if (option.name != current.sub(2)) {
+                    continue;
                 }
             } else if (option.aliases.indexOf(current.sub(1)) != null) {
-                matchingOption = option;
-                break;
+                // Matched an alias.
+            } else {
+                continue;
             }
-        }
 
-        if (matchingOption -> option) {
             if (option.hasValue) {
-                this.state!.offset = this.state!.offset + 1;
+                this.state!.offset += 1;
                 option.value = this.state!.args[this.state!.offset];
             } else {
-                option.value = "true"; 
+                option.value = "true";
             }
 
-            this.state!.offset = this.state!.offset + 1;
+            this.state!.offset += 1;
 
             return;
         }
@@ -92,118 +90,121 @@ export object Command {
         throw ParseError{ message = "Option `{current}` does not exists" };
     }
 
-    fun consumeArgument() > void !> ParseError {
-        assert(this.state != null, message: "No state");
+    mut fun consumeArgument() > void !> ParseError {
+        std\assert(this.state != null, message: "No state");
 
-        const Argument? currentArg = if (this.arguments.size() > 0 and this.state!.arg < this.arguments.size())
-            this.arguments[this.arguments.keys()[this.state!.arg]]
-        else
-            null;
-        
+        final currentArg =
+            if (this.arguments.size() > 0
+                and this.state!.arg < this.arguments.size()) this.arguments[this
+                .arguments.keys()[this.state!.arg]] else null;
+
         if (currentArg -> arg) {
-            [str] value = [<str>];
-            for (int i = 0; (arg.max == null or i < arg.max!) and this.state!.offset < this.state!.args.len(); i = i + 1) {
+            final value: mut [str] = mut [];
+            for (i: int = 0; (arg.max == null or i < arg.max!)
+                and this.state!.offset < this.state!.args.len(); i += 1) {
                 value.append(this.state!.args[this.state!.offset]);
-                this.state!.offset = this.state!.offset + 1;
+                this.state!.offset += 1;
 
-                | Next is not an argument
-                if ((this.state!.offset >= this.state!.args.len() or this.state!.args[this.state!.offset].startsWith("-"))
-                    and (arg.max == null or i + 1 < arg.max)) {
+                // Next is not an argument
+                if ((this.state!.offset >= this.state!.args.len()
+                    or this.state!.args[this.state!.offset].startsWith("-"))
+                    and (arg.max == null or i + 1 < arg.max!)) {
                     if (i + 1 >= arg.min) {
                         break;
                     } else {
-                        throw ParseError{ message = "Argument `{arg.name}` expects at least {arg.min} elements, {i + 1} provided" };
+                        throw ParseError{
+                            message =
+                                "Argument `{arg.name}` expects at least {arg.min} elements, {i + 1} provided"
+                        };
                     }
                 }
             }
 
-            arg.value = value;
+            arg.value = value.cloneImmutable();
         } else {
             return;
         }
 
-        this.state!.arg = this.state!.arg + 1;
-        
-        | If we parsed all arguments or at least mandatory ones, set flag
-        this.state!.argParsed = this.state!.arg >= this.arguments.size()
-            or (this.state!.args[this.state!.offset].startsWith("-") and this.state!.arg >= this.state!.mandatoryArguments.len());
+        this.state!.arg += 1;
+
+        // If we parsed all arguments or at least mandatory ones, set flag
+        this.state!.argParsed =
+            this.state!.arg >= this.arguments.size()
+            or (this.state!.args[this.state!.offset].startsWith("-")
+                and this.state!.arg >= this.state!.mandatoryArguments.len());
     }
 
-    fun consumeCommand() > bool {
-        const str current = if (this.state != null) this.state!.args[this.state!.offset] else "";
+    mut fun consumeCommand() > bool {
+        final current =
+            if (this.state != null) this.state!.args[this.state!.offset] else "";
 
-        | Could it be a sub-command?
-        Command? selectedCommand = null;
-        foreach (Command command in this.commands) {
-            if (current == command.name or command.aliases.indexOf(current) != null) {
-                selectedCommand = command;
-                this.state!.offset = this.state!.offset + 1;
-                break;
+        // Could it be a sub-command?
+        foreach (command in this.commands) {
+            if (current == command.name
+                or command.aliases.indexOf(current) != null) {
+                this.state!.offset += 1;
+                command.state = this.state;
+                final args = this.state?.args ?? [<str>];
+                final offset = this.state?.offset ?? 0;
+                _ =
+                    command.parse(
+                        if (offset < args.len()) args.sub(
+                            this.state?.offset ?? 0
+                        ) else [<str>]
+                    );
+
+                return true;
             }
-        }
-
-        if (selectedCommand -> command) {
-            command.state = this.state;
-            [str] args = this.state?.args ?? [<str>];
-            int offset = this.state?.offset ?? 0;
-            _ = command.parse(
-                if (offset < args.len())
-                    args.sub(this.state?.offset ?? 0)
-                else
-                    [<str>]
-            );
-
-            return true;
         }
 
         return false;
     }
 
-    fun parse([str] args) > Command {
+    mut fun parse(args: [str]) > mut Command {
         try {
             this.selected = true;
 
-            [Argument] mandatoryArguments = [<Argument>];
-            foreach (Argument arg in this.arguments) {
+            final mandatoryArguments: mut [mut Argument] = mut [];
+            foreach (arg in this.arguments) {
                 if (arg.min > 0) {
                     mandatoryArguments.append(arg);
                 }
             }
 
-            ParseState state = ParseState{
+            final state = mut ParseState{
                 args = args,
-                | ça merde?
                 mandatoryArguments = mandatoryArguments,
             };
-            | ça merde?
             this.state = state;
-        
+
             while (state.offset < args.len()) {
-                const str arg = args[state.offset];
+                final arg = args[state.offset];
 
                 if (arg[0] == "-") {
-                    | Did we parse required arguments before?
-                    if (!state.argParsed and state.arg != 0 and this.arguments.size() > 0 and state.mandatoryArguments.len() > 0) {
+                    // Did we parse required arguments before?
+                    if (!state.argParsed and state.arg != 0
+                        and this.arguments.size() > 0
+                        and state.mandatoryArguments.len() > 0) {
                         throw ParseError{ message = "Missing arguments" };
                     }
 
-                    | It's an option
+                    // It's an option
                     this.consumeOption();
                 } else {
-                    | It's either an argument or a sub-command
+                    // It's either an argument or a sub-command
 
-                    | Is there some required arguments?
+                    // Is there some required arguments?
                     if (!state.argParsed and state.mandatoryArguments.len() > 0) {
                         this.consumeArgument();
                     } else if (!this.consumeCommand()) {
-                        | It must be an argument
+                        // It must be an argument
                         this.consumeArgument();
                     } else {
-                        return;
+                        return this;
                     }
                 }
             }
-        } catch (ParseError error) {
+        } catch (error: ParseError) {
             this.error(error);
         }
 
@@ -214,7 +215,7 @@ export object Command {
         try {
             stderr.write("Usage: {this.name} ");
 
-            foreach (Option option in this.options) {
+            foreach (option in this.options) {
                 stderr.write("[--{option.name}");
 
                 if (option.hasValue) {
@@ -224,14 +225,15 @@ export object Command {
                 stderr.write("] ");
             }
 
-            foreach (Argument argument in this.arguments) {
+            foreach (argument in this.arguments) {
                 if (argument.min == 0) {
                     stderr.write("[");
                 }
 
                 stderr.write("<{argument.name}");
 
-                if (argument.min > 1 or argument.max == null or argument.max! > 1) {
+                if (argument.min > 1 or argument.max == null
+                    or argument.max! > 1) {
                     stderr.write(", ...");
                 }
 
@@ -253,10 +255,12 @@ export object Command {
         } catch {}
     }
 
-    fun error(ParseError error) {
+    fun error(error: ParseError) {
         this.usage();
 
-        stderr.write("\n\nError: {error.message ?? "could not parse arguments"}\n\n") catch void;
+        stderr.write(
+            "\n\nError: {error.message ?? "could not parse arguments"}\n\n"
+        ) catch void;
     }
 
     fun help() > void {
@@ -267,9 +271,9 @@ export object Command {
 
             if (this.options.size() > 0) {
                 stderr.write("\n\nOptions:\n");
-                foreach (Option option in this.options) {
+                foreach (option in this.options) {
                     stderr.write("   --{option.name}");
-                    foreach (str alias in option.aliases) {
+                    foreach (alias in option.aliases) {
                         stderr.write(", -{alias}");
                     }
                     if (option.hasValue) {
@@ -281,9 +285,9 @@ export object Command {
 
             if (this.commands.size() > 0) {
                 stderr.write("\nCommands:\n");
-                foreach (Command command in this.commands) {
+                foreach (command in this.commands) {
                     stderr.write("   {command.name}");
-                    foreach (str alias in command.aliases) {
+                    foreach (alias in command.aliases) {
                         stderr.write(", {alias}");
                     }
                     stderr.write("\t {command.desc}\n");
@@ -294,70 +298,70 @@ export object Command {
 }
 
 test "bargz" {
-    [str] args = "one two three --option 12 -d on list --help".split(" ");
+    final args = "one two three --option 12 -d on list --help".split(" ");
 
-    Command command = Command{
+    final command = mut Command{
         name = "test",
         desc = "Test things out",
         arguments = {
-            "first": Argument{
+            "first": mut .{
                 name = "first",
                 desc = "First ones",
                 min = 1,
                 max = 2,
             },
-            "second": Argument{
+            "second": mut .{
                 name = "second",
                 desc = "Second ones",
             },
         },
         options = {
-            "option": Option{
+            "option": mut .{
                 name = "option",
                 desc = "Option is optional",
                 hasValue = true,
             },
-            "debug": Option{
+            "debug": mut .{
                 name = "debug",
                 desc = "Debug things",
                 aliases = [ "d" ],
                 hasValue = true,
             },
-            "help": Option{
+            "help": mut .{
                 name = "help",
                 desc = "Show this help message",
                 aliases = [ "h" ],
-            }
+            },
         },
         commands = {
-            "list": Command{
+            "list": mut .{
                 name = "list",
                 desc = "List things",
                 arguments = {
-                    "dir": Argument{
+                    "dir": mut .{
                         name = "dir",
                         desc = "Which directory to list",
-                    }
+                    },
                 },
                 options = {
-                    "help": Option{
+                    "help": mut .{
                         name = "help",
                         desc = "Show this help message",
                         aliases = [ "h" ],
-                    }
-                }
-            }
-        }
+                    },
+                },
+            },
+        },
     };
 
-    command.parse(args);
+    _ = command.parse(args);
 
     if (command.options["help"]?.value != null) {
         command.help();
         return;
     }
 
-    const Command listCommand = command.commands["list"]!;
+    final listCommand = command.commands["list"]!;
     if (listCommand.selected and listCommand.options["help"]?.value != null) {
         listCommand.help();
         return;

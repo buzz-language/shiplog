@@ -1,15 +1,23 @@
-import "std";
-import "args";
-import "journal";
-import "sqlite";
-import "errors";
-import "io";
-import "os";
-import "log";
+import "buzz:std";
+import "buzz:errors";
+import "buzz:io";
+import "buzz:os";
+import "pkg:shiplog/args" as _;
+import "pkg:shiplog/journal" as _;
+import "pkg:shiplog/sqlite" as _;
+import "pkg:shiplog/log" as _;
 
-fun getEntrySource(Command command) > str? !> SQLiteError, FileSystemError, ReadWriteError, UnexpectedError {
+fun getEntrySource(
+    command: Command
+) > str?
+    !>
+    SQLiteError,
+    errors\ExecError,
+    errors\FileSystemError,
+    errors\ReadWriteError,
+    errors\UnexpectedError {
     if (command.options["file"]?.value -> file) {
-        return File.open(file, mode: FileMode.read).readAll();
+        return io\File.open(file, mode: .read).readAll();
     }
 
     if (command.arguments["entry"]?.value -> entry) {
@@ -18,158 +26,161 @@ fun getEntrySource(Command command) > str? !> SQLiteError, FileSystemError, Read
         }
     }
 
-    if (!stdin.isTTY()) {
-        return stdin.readAll();
+    if (!io\stdin.isTTY()) {
+        return io\stdin.readAll();
     }
 
-    const str tmpFile = tmpFilename("shiplog");
+    final tmpFile = os\tmpFilename("shiplog");
 
-    if (execute([env("EDITOR") ?? "vi", tmpFile]) == 0) {
-        return File.open(tmpFile, mode: FileMode.read).readAll();
+    if (os\execute([ os\env("EDITOR") ?? "vi", tmpFile ]) == 0) {
+        return io\File.open(tmpFile, mode: .read).readAll();
     }
 
     return null;
 }
 
-fun main([str] args) > void {
-    Command command = Command{
+fun main(args: [str]) > void {
+    final command = mut Command{
         name = "shiplog",
-        desc = "⚓ A journal keeping cli tool",
+        desc = "\226\154\147 A journal keeping cli tool",
         options = {
-            "help": Option{
+            "help": mut .{
                 name = "help",
                 desc = "Show this help message",
                 aliases = [ "h" ],
             },
-            "directory": Option{
+            "directory": mut .{
                 name = "directory",
-                desc = "Specify where shiplog will leave (default is ~/.shiplog)",
+                desc =
+                    "Specify where shiplog will leave (default is ~/.shiplog)",
                 aliases = [ "dir", "d" ],
             },
-            "verbose": Option{
+            "verbose": mut .{
                 name = "verbose",
                 desc = "Show debug logs",
                 aliases = [ "v" ]
-            }
+            },
         },
         commands = {
-            "add": Command{
+            "add": mut .{
                 name = "add",
                 desc = "Write a log entry",
                 options = {
-                    "file": Option{
+                    "file": mut .{
                         name = "file",
                         desc = "Use file content as entry",
                         aliases = [ "f" ],
                     },
                 },
                 arguments = {
-                    "entry": Argument{
+                    "entry": mut .{
                         name = "entry",
-                        desc = "The entry. Any word prefixed by `+` will be added as a tag. If omitted will be read from stdin",
+                        desc =
+                            "The entry. Any word prefixed by `+` will be added as a tag. If omitted will be read from stdin",
                         min = 0,
                         max = null,
                     },
                 },
             },
-            "list": Command{
+            "list": mut .{
                 name = "list",
                 desc = "List log entries",
                 arguments = {
-                    "filter": Argument{
+                    "filter": mut .{
                         name = "filter",
-                        desc = "Filter entries. You can filter in or out tags by prefixing the tag name by `+` or `:` respectively.",
+                        desc =
+                            "Filter entries. You can filter in or out tags by prefixing the tag name by `+` or `:` respectively.",
                         min = 0,
                         max = null,
-                    }
+                    },
                 },
                 options = {
-                    "limit": Option{
+                    "limit": mut .{
                         name = "limit",
                         desc = "Limit number of printed entries",
                         aliases = [ "n" ],
                         hasValue = true,
                     },
-                    "before": Option{
+                    "before": mut .{
                         name = "before",
                         desc = "Only show entry created before this date",
                         aliases = [ "b" ],
                         hasValue = true,
                     },
-                    "after": Option{
+                    "after": mut .{
                         name = "after",
                         desc = "Only show entry created after this date",
                         aliases = [ "a" ],
                         hasValue = true,
                     },
-                    "at": Option{
+                    "at": mut .{
                         name = "at",
                         desc = "Only show entry created at this date",
                         hasValue = true,
                     },
-                    "short": Option{
+                    "short": mut .{
                         name = "short",
                         desc = "Short list with only titles and IDs",
                         aliases = [ "s" ],
-                    }
-                }
+                    },
+                },
             },
-            "delete": Command {
+            "delete": mut .{
                 name = "delete",
                 desc = "Delete entry",
                 aliases = [ "del", "d" ],
                 arguments = {
-                    "id": Argument{
+                    "id": mut .{
                         name = "id",
                         desc = "Entry ID",
                         min = 1,
                         max = 1,
-                    }
-                }
+                    },
+                },
             },
-            "modify": Command{
+            "modify": mut .{
                 name = "modify",
                 desc = "Modify entry",
                 aliases = [ "mod", "m" ],
                 arguments = {
-                    "id": Argument{
+                    "id": mut .{
                         name = "id",
                         desc = "Entry ID",
                         min = 1,
                         max = 1,
                     },
-                    "entry": Argument{
+                    "entry": mut .{
                         name = "entry",
-                        desc = "Any word prefixed by `+` will be added as a tag. Any word prefixed by `:` will be considered a tag to be deleted.",
+                        desc =
+                            "Any word prefixed by `+` will be added as a tag. Any word prefixed by `:` will be considered a tag to be deleted.",
                         min = 0,
                         max = null,
-                    }
-                }
+                    },
+                },
             },
-            "view": Command{
+            "view": mut .{
                 name = "view",
                 desc = "View entry",
                 aliases = [ "v" ],
                 arguments = {
-                    "id": Argument{
+                    "id": mut .{
                         name = "id",
                         desc = "Entry ID",
                         min = 1,
                         max = 1,
                     },
-                }
-            }
+                },
+            },
         },
     };
 
     _ = command.parse(args);
 
     Logger.instance = Logger{
-        out = stderr,
-        level = if (command.options["verbose"]?.value != null)
-            Level.Debug
-        else
-            Level.Error,
+        into = io\stderr,
+        level =
+            if (command.options["verbose"]?.value != null) Level.Debug else Level
+                .Error,
     };
 
     if (command.options["help"]?.value != null) {
@@ -178,61 +189,68 @@ fun main([str] args) > void {
     }
 
     try {
-        SQLite sqlite = SQLite.init();
-        Journal journal = Journal.init(sqlite, path: command.options["directory"]?.value);
+        final sqlite = SQLite.init();
+        final journal = Journal.init(
+            sqlite,
+            path: command.options["directory"]?.value
+        );
 
-        Command addCommand = command.commands["add"]!;
+        final addCommand = command.commands["add"]!;
         if (addCommand.selected) {
             if (Entry.parse(getEntrySource(addCommand) ?? "") -> entry) {
                 journal.addEntry(entry);
             } else {
-                print("Could not parse entry");
+                std\print("Could not parse entry");
             }
 
             return;
         }
 
-        Command modifyCommand = command.commands["modify"]!;
+        final modifyCommand = command.commands["modify"]!;
         if (modifyCommand.selected) {
-            const str entryId = modifyCommand.arguments["id"]?.value?[0] ?? "";
-            Filter filter = Filter.parse(modifyCommand.arguments["entry"]?.value ?? [<str>]);
-            filter.id = entryId;
+            final entryId = modifyCommand.arguments["id"]?.value?[0] ?? "";
+            var filter =
+                Filter.parse(modifyCommand.arguments["entry"]?.value ?? [<str>]);
+            final parsedEntryId = std\parseInt(entryId) ?? 0;
+            filter.id = parsedEntryId;
 
-            Entry? entry = resolve &journal.getEntry(parseInt(entryId) ?? 0);
+            final entry = journal.getEntry(parsedEntryId);
 
             if (entry == null) {
-                print("Entry #{filter.id} does not exists");
+                std\print("Entry #{filter.id} does not exists");
                 return;
             }
 
             if (filter.isEmpty()) {
-                const str tmpFile = tmpFilename("shiplog");
+                final tmpFile = os\tmpFilename("shiplog");
 
-                const File file = File.open(tmpFile, mode: FileMode.write);
+                final file = io\File.open(tmpFile, mode: .write);
                 file.write(entry?.expr() ?? "");
                 file.close();
 
-                if (execute([env("EDITOR") ?? "vi", tmpFile]) == 0) {
-                    filter = Filter.parse(
-                        File.open(tmpFile, mode: FileMode.read)
-                            .readAll()
-                            .split(" ")
-                    );
-                    filter.id = entryId;
+                if (os\execute([ os\env("EDITOR") ?? "vi", tmpFile ]) == 0) {
+                    filter =
+                        Filter.parse(
+                            io\File.open(tmpFile, mode: .read).readAll().split(
+                                " "
+                            )
+                        );
+                    filter.id = parsedEntryId;
                 }
             }
 
             journal.modifyEntry(filter);
         }
 
-        Command listCommand = command.commands["list"]!;
+        final listCommand = command.commands["list"]!;
         if (listCommand.selected) {
-            Filter filter = Filter.parse(listCommand.arguments["filter"]?.value ?? [<str>]);
+            final filter =
+                Filter.parse(listCommand.arguments["filter"]?.value ?? [<str>]);
             filter.before = listCommand.options["before"]?.value;
             filter.after = listCommand.options["after"]?.value;
             filter.at = listCommand.options["at"]?.value;
             if (listCommand.options["limit"]?.value -> limit) {
-                filter.limit = parseInt(limit);
+                filter.limit = std\parseInt(limit);
             }
 
             journal.listEntries(
@@ -243,19 +261,19 @@ fun main([str] args) > void {
             return;
         }
 
-        Command deleteCommand = command.commands["delete"]!;
+        final deleteCommand = command.commands["delete"]!;
         if (deleteCommand.selected) {
-            if (parseInt(deleteCommand.arguments["id"]!.value![0]) -> id) {
+            if (std\parseInt(deleteCommand.arguments["id"]!.value![0]) -> id) {
                 journal.deleteEntry(id);
             } else {
-                print("Entry ID must be integer");
+                std\print("Entry ID must be integer");
             }
 
             return;
         }
-    } catch (SQLiteError error) {
-        Logger.instance?.error("{error.code} {error.message}", namespace: "SQL");
-    } catch (any error) {
+    } catch (error: SQLiteError) {
+        Logger.instance?.error("{error.code} {error.message}", scope: "SQL");
+    } catch (error: any) {
         Logger.instance?.error("Something went wrong: {error}");
     }
 }

@@ -1,18 +1,22 @@
-import "std";
-import "fs";
-import "os";
-import "sqlite";
-import "errors";
-import "serialize";
-import "term";
+namespace shiplog\journal;
+
+import "buzz:std";
+import "buzz:fs";
+import "buzz:os";
+import "buzz:errors";
+import "buzz:serialize" as _;
+import "pkg:shiplog/sqlite" as _;
+import "pkg:shiplog/term";
 
 export object Attribute {
-    int? id,
-    str name,
-    str @"type",
+    id: int?,
+    name: str,
+    @"type": str,
 
-    static fun createTables(Database db) > void !> SQLiteError {
-        | FIXME: calling with resolve should free surrounding function to require yield type
+    static fun createTables(
+        db: Database
+    ) > void !> SQLiteError, errors\ReadWriteError {
+        // FIXME: calling with resolve should free surrounding function to require yield type
         _ = resolve &(db.prepareRaw(`
             CREATE TABLE IF NOT EXISTS attributes (
                 rowid INTEGER NOT NULL PRIMARY KEY,
@@ -35,17 +39,17 @@ export object Attribute {
 }
 
 export object Tag {
-    int? id,
-    str label,
+    id: int?,
+    label: str,
 
-    static fun fromBoxed([Boxed] propertyList) > Tag {
-        return Tag{
-            id = propertyList[0].integerValue(),
-            label = propertyList[1].stringValue(),
-        };
-    }
+    static fun fromBoxed(propertyList: [Boxed]) => Tag{
+        id = propertyList[0].integerValue(),
+        label = propertyList[1].stringValue(),
+    };
 
-    static fun createTables(Database db) > void !> SQLiteError {
+    static fun createTables(
+        db: Database
+    ) > void !> SQLiteError, errors\ReadWriteError {
         _ = resolve &(db.prepareRaw(`
             CREATE TABLE IF NOT EXISTS entries_tags (
                 entry_id INTEGER NOT NULL, 
@@ -57,36 +61,41 @@ export object Tag {
     }
 
     fun colored() > str {
-        const float a = toFloat("a".byte());
+        final a = std\toDouble("a".byte(0));
 
-        const float r = ((toFloat(this.label.lower().byte(0)) - a) / 26.0) * 255.0;
-        const float g = ((toFloat(this.label.lower().byte(1)) - a) / 26.0) * 255.0;
-        const float b = ((toFloat(this.label.lower().byte(2)) - a) / 26.0) * 255.0;
+        final r =
+            ((std\toDouble(this.label.lower().byte(0)) - a) / 26.0) * 255.0;
+        final g =
+            ((std\toDouble(this.label.lower().byte(1)) - a) / 26.0) * 255.0;
+        final b =
+            ((std\toDouble(this.label.lower().byte(2)) - a) / 26.0) * 255.0;
 
-        return "+\27[38;2;{toInt(r)};{toInt(g)};{toInt(b)}m{this.label}\27[0m";
+        return "+\027[38;2;{std\toInt(r)};{std\toInt(g)};{std\toInt(b)}m{this.label}\027[0m";
     }
 }
 
 export object Entry {
-    int? id,
-    str? createdAt,
-    str? updatedAt,
-    str content,
-    str? location,
-    [Tag] tags = [<Tag>],
-    {str: str} attributes = {<str: str>},
+    id: int?,
+    createdAt: str?,
+    updatedAt: str?,
+    content: str,
+    location: str?,
+    tags: mut [Tag],
+    attributes: mut {str: str},
 
-    static fun fromBoxed([Boxed] propertyList) > Entry {
-        return Entry{
-            id = propertyList[0].integerValue(),
-            createdAt = propertyList[1].stringValue(),
-            updatedAt = propertyList[2].string(),
-            content = propertyList[3].stringValue(),
-            location = propertyList[4].string(),
-        };
-    }
+    static fun fromBoxed(propertyList: [Boxed]) => mut Entry{
+        id = propertyList[0].integerValue(),
+        createdAt = propertyList[1].stringValue(),
+        updatedAt = propertyList[2].string(),
+        content = propertyList[3].stringValue(),
+        location = propertyList[4].string(),
+        tags = mut [],
+        attributes = mut {},
+    };
 
-    static fun createTables(Database db) > void !> SQLiteError {
+    static fun createTables(
+        db: Database
+    ) > void !> SQLiteError, errors\ReadWriteError {
         _ = resolve &(db.prepareRaw(`
             CREATE TABLE IF NOT EXISTS entries (
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,
@@ -97,46 +106,46 @@ export object Entry {
         `)).execute();
     }
 
-    static fun parse(str args) > Entry? {
-        [str] tags = [<str>];
-        {str: str} attributes = {<str: str>};
-        str content = "";
+    static fun parse(args: str) > mut Entry? {
+        final tags: mut [str] = mut [];
+        final attributes: mut {str: str} = mut {};
+        var content = "";
 
-        foreach (str line in args.split("\n")) {
-            foreach (str word in line.split(" ")) {
-                str trimmed = word.trim();
-                str prefix = trimmed[0];
+        foreach (line in args.split("\n")) {
+            foreach (word in line.split(" ")) {
+                final trimmed = word.trim();
+                final prefix = trimmed[0];
 
                 if (prefix == "+") {
                     tags.append(trimmed.sub(1));
-                } else if ($"^([^=])+=([^\s]+)".match(trimmed) -> match) {
-                    attributes[match[1]] = match[2];
+                } else if ($"^([^=])+=([^\s]+)".matchAgainst(trimmed) -> m) {
+                    attributes[m[1].capture] = m[2].capture;
                 } else {
                     content = "{content}{word} ";
                 }
             }
 
-            content = content + "\n";
+            content += "\n";
         }
 
         content = content.trim();
 
-        return Entry{
-            content = content,
-            tags = tags.map::<Tag>(
-                fun (int _, str tag) -> Tag{ label = tag }
-            ),
+        return mut Entry{
+            content,
+            tags =
+                tags.map::<Tag>(fun (_: int, tag: str) => Tag{ label = tag })
+                    .cloneMutable(),
             attributes = attributes,
         };
     }
 
     fun expr() > str {
-        str expression = "";
-        foreach (str key, str value in this.attributes) {
+        var expression = "";
+        foreach (key, value in this.attributes) {
             expression = "{expression}{key}={value}\n";
         }
 
-        foreach (Tag tag in this.tags) {
+        foreach (tag in this.tags) {
             expression = "{expression}+{tag.label}\n";
         }
 
@@ -145,43 +154,46 @@ export object Entry {
 }
 
 export object Filter {
-    int? id,
-    [str] tags = [<str>],
-    [str] excludedTags = [<str>],
-    {str: str} attributes = {<str: str>},
-    {str: str} excludedAttributes = {<str: str>},
-    str? content,
-    str? before,
-    str? after,
-    str? at,
-    int? limit,
+    id: int?,
+    tags: mut [str],
+    excludedTags: mut [str],
+    attributes: mut {str: str},
+    excludedAttributes: mut {str: str},
+    content: str?,
+    before: str?,
+    after: str?,
+    at: str?,
+    limit: int?,
 
     fun isEmpty() > bool {
-        return this.tags.len() == 0
-            and this.excludedTags.len() == 0
+        return this.tags.len() == 0 and this.excludedTags.len() == 0
             and this.attributes.size() == 0
-            and this.excludedTags.size() == 0
-            and this.content == null;
+            and this.excludedAttributes.size() == 0 and this.content == null;
     }
 
-    static fun parse([str] args) > Filter {
-        Filter filter = Filter{};
+    static fun parse(args: [str]) > mut Filter {
+        final filter = mut Filter{
+            tags = mut [],
+            excludedTags = mut [],
+            attributes = mut {},
+            excludedAttributes = mut {},
+        };
 
-        foreach (str word in args) {
-            str trimmed = word.trim();
-            str prefix = trimmed[0];
+        foreach (word in args) {
+            final trimmed = word.trim();
+            final prefix = trimmed[0];
 
             if (prefix == "+") {
                 filter.tags.append(trimmed.sub(1));
             } else if (prefix == ":") {
                 filter.excludedTags.append(trimmed.sub(1));
-            } else if ($"^([^=])+=([^\s]+)".match(trimmed) -> match) {
-                filter.attributes[match[1]] = match[2];
+            } else if ($"^([^=])+=([^\s]+)".matchAgainst(trimmed) -> m) {
+                filter.attributes[m[1].capture] = m[2].capture;
             } else {
-                filter.content = "{filter.content}{word} ";
+                filter.content = "{filter.content ?? ""}{word} ";
             }
 
-            | TODO: excluded attributes
+            // TODO: excluded attributes
         }
 
         filter.content = filter.content?.trim();
@@ -191,25 +203,33 @@ export object Filter {
 }
 
 export object Journal {
-    Database db,
+    db: Database,
 
-    static fun init(SQLite sqlite, str? path) > Journal !> SQLiteError, FileSystemError, UnexpectedError {
-        str dir = path ?? "{env("HOME")}/.shiplog";
-        bool initialized = exists("{dir}/journal.db");
+    static fun init(
+        sqlite: SQLite,
+        path: str?
+    ) > Journal
+        !>
+        SQLiteError,
+        errors\FileSystemError,
+        errors\ReadWriteError,
+        errors\UnexpectedError {
+        final dir = path ?? "{os\env("HOME")}/.shiplog";
+        final initialized = fs\exists("{dir}/journal.db");
 
         if (!initialized) {
             try {
-                makeDirectory(dir);
-            } catch (FileSystemError err) {
-                if (err != FileSystemError.PathAlreadyExists) {
+                fs\makeDirectory(dir);
+            } catch (err: errors\FileSystemError) {
+                if (err != .PathAlreadyExists) {
                     throw err;
                 }
             }
         }
 
-        const Database db = sqlite.open(
+        final db = sqlite.open(
             "{dir}/journal.db",
-            flags: [OpenFlag.ReadWrite, OpenFlag.Create],
+            flags: [ .ReadWrite, .Create ],
         );
 
         if (!initialized) {
@@ -218,46 +238,42 @@ export object Journal {
             Attribute.createTables(db);
         }
 
-        Journal journal = Journal{
-            db = db,
-        };
-
-        return journal;
+        return Journal{ db };
     }
 
-    fun getEntry(int id) > Entry? !> SQLiteError {
-        const [[Boxed]] result = resolve &Query{}
-            .select([ "rowid", "created_at", "updated_at", "content", "location" ])
-            .@"from"([ "entries" ])
-            .where([ "rowid = {id}" ])
-            .execute(this.db);
-        
+    fun getEntry(id: int) > Entry? !> SQLiteError, errors\ReadWriteError {
+        final result = resolve &Query{}.select(
+            [ "rowid", "created_at", "updated_at", "content", "location" ]
+        ).@"from"([ "entries" ]).where([ "rowid = {id}" ]).execute(this.db);
+
         if (result.len() == 0) {
             return null;
         }
 
-        const Entry entry = Entry.fromBoxed(result[0]);
+        final entry = Entry.fromBoxed(result[0]);
 
-        Statement selectTags = Query{}
-            .select([ "rowid", "tag" ])
-            .@"from"([ "entries_tags " ])
-            .where([ "entry_id = {entry.id}" ])
-            .prepare(this.db);
+        final selectTags =
+            Query{}.select([ "rowid", "tag" ]).@"from"([ "entries_tags " ])
+                .where([ "entry_id = {entry.id}" ]).prepare(this.db);
 
-        foreach ([Boxed] tagRow in &selectTags.execute()) {
-            entry.tags.append(Tag.fromBoxed(tagRow));
+        foreach (tagRow in &selectTags.execute()) {
+            if (tagRow -> row) {
+                entry.tags.append(Tag.fromBoxed(row));
+            }
         }
 
         return entry;
     }
 
-    fun getEntries(Filter filter) > [Entry] > Entry? !> SQLiteError {
-        [Entry] entries = [<Entry>];
-        Query selectEntriesQuery = Query{}
-            .select([ "rowid", "created_at", "updated_at", "content", "location" ])
-            .@"from"([ "entries" ]);
-        
-        [str] conditions = [<str>];
+    fun getEntries(
+        filter: Filter
+    ) > [Entry] *> Entry? !> SQLiteError, errors\ReadWriteError {
+        final entries: mut [Entry] = mut [];
+        var selectEntriesQuery = Query{}.select(
+            [ "rowid", "created_at", "updated_at", "content", "location" ]
+        ).@"from"([ "entries" ]);
+
+        final conditions: mut [str] = mut [];
 
         if (filter.content -> content) {
             conditions.append("content LIKE '%{content}%'");
@@ -268,17 +284,22 @@ export object Journal {
         }
 
         if (filter.tags.len() > 0) {
-            str tagFilter = filter.tags
-                .map::<str>(fun (int _, str tag) -> "'{tag}'")
-                .join(", ");
-            conditions.append("rowid IN (SELECT entry_id FROM entries_tags WHERE tag IN ({tagFilter}))");
+            final tagFilter =
+                filter.tags.map::<str>(fun (_: int, tag: str) => "'{tag}'").join(
+                    ", "
+                );
+            conditions.append(
+                "rowid IN (SELECT entry_id FROM entries_tags WHERE tag IN ({tagFilter}))"
+            );
         }
 
         if (filter.excludedTags.len() > 0) {
-            str tagFilter = filter.excludedTags
-                .map::<str>(fun (int _, str tag) -> "'{tag}'")
-                .join(", ");
-            conditions.append("rowid NOT IN (SELECT entry_id FROM entries_tags WHERE tag IN ({tagFilter}))");
+            final tagFilter = filter.excludedTags.map::<str>(
+                fun (_: int, tag: str) => "'{tag}'"
+            ).join(", ");
+            conditions.append(
+                "rowid NOT IN (SELECT entry_id FROM entries_tags WHERE tag IN ({tagFilter}))"
+            );
         }
 
         if (filter.before -> before) {
@@ -293,24 +314,26 @@ export object Journal {
             conditions.append("date(created_at) = date('{at}')");
         }
 
-        selectEntriesQuery = selectEntriesQuery
-            .where(conditions);
-        
+        selectEntriesQuery = selectEntriesQuery.where(conditions);
+
         if (filter.limit -> limit) {
-            selectEntriesQuery = selectEntriesQuery
-                .limit(limit);
+            selectEntriesQuery = selectEntriesQuery.limit(limit);
         }
 
-        foreach ([Boxed] entryRow in &selectEntriesQuery.execute(this.db)) {
-            const Entry entry = Entry.fromBoxed(entryRow);
-            Statement selectTags = Query{}
-                .select([ "rowid", "tag" ])
-                .@"from"([ "entries_tags " ])
-                .where([ "entry_id = {entry.id}" ])
-                .prepare(this.db);
+        foreach (entryRow in &selectEntriesQuery.execute(this.db)) {
+            if (entryRow == null) {
+                continue;
+            }
 
-            foreach ([Boxed] tagRow in &selectTags.execute()) {
-                entry.tags.append(Tag.fromBoxed(tagRow));
+            final entry = Entry.fromBoxed(entryRow!);
+            final selectTags =
+                Query{}.select([ "rowid", "tag" ]).@"from"([ "entries_tags " ])
+                    .where([ "entry_id = {entry.id}" ]).prepare(this.db);
+
+            foreach (tagRow in &selectTags.execute()) {
+                if (tagRow -> row) {
+                    entry.tags.append(Tag.fromBoxed(row));
+                }
             }
 
             entries.append(entry);
@@ -320,102 +343,99 @@ export object Journal {
         return entries;
     }
 
-    fun listEntries(Filter filter, bool short = false) > void !> SQLiteError {
-        foreach (Entry entry in &this.getEntries(filter)) {
-            str line = entry.content;
-            if ($"([^\n]+)".match(entry.content) -> match) {
-                line = match[1];
+    fun listEntries(
+        filter: Filter,
+        short: bool = false
+    ) > void !> SQLiteError, errors\ReadWriteError {
+        foreach (entryOrNull in &this.getEntries(filter)) {
+            if (entryOrNull == null) {
+                continue;
+            }
+
+            final entry = entryOrNull!;
+            var line = entry.content;
+            if ($"([^\n]+)".matchAgainst(entry.content) -> m) {
+                line = m[1].capture;
             }
             line = line.sub(0, len: 80);
 
-            [str] tags = [<str>];
-            foreach (Tag tag in entry.tags) {
+            final tags: mut [str] = mut [];
+            foreach (tag in entry.tags) {
                 tags.append(tag.colored());
             }
 
             if (short) {
-                print(
-                    cyan("#{entry.id} ")
-                    + green(line)
-                    + " "
-                    + tags.join(" ")
-                );
+                std\print(term\cyan("#{entry.id} ") + term\green(line) + " "
+                    + tags.join(" "));
             } else {
-                print(
-                    cyan("#{entry.id} ")
-                    + green(line)
-                    + "\n"
-                    + dim(entry.updatedAt ?? entry.createdAt ?? "")
-                    + " "
-                    + tags.join(" ")
+                std\print(
+                    term\cyan("#{entry.id} ") + term\green(line) + "\n"
+                        + term\dim(entry.updatedAt ?? entry.createdAt ?? "")
+                        + " " + tags.join(" ")
                 );
             }
         }
     }
 
-    fun addEntry(Entry entry) > void !> SQLiteError {
-        _ = resolve &Query{}
-            .insertInto("entries", columns: [ "content" ])
-            .values([ "'{entry.content}'" ])
-            .execute(this.db);
-        
-        entry.id = (resolve &Query{}
-            .select([ "LAST_INSERT_ROWID()" ])
-            .execute(this.db))[0][0]
-            .integerValue();
-        
-        foreach (Tag tag in entry.tags) {
-            _ = resolve &Query{}
-                .insertInto("entries_tags", columns: [ "entry_id", "tag" ])
-                .values([ "{entry.id}", "'{tag.label}'" ])
-                .execute(this.db);
+    fun addEntry(entry: mut Entry) > void !> SQLiteError, errors\ReadWriteError {
+        _ =
+            resolve &Query{}.insertInto("entries", columns: [ "content" ])
+                .values([ "'{entry.content}'" ]).execute(this.db);
+
+        entry.id =
+            (resolve &Query{}.select([ "LAST_INSERT_ROWID()" ]).execute(this.db))[0][0]
+                .integerValue();
+
+        foreach (tag in entry.tags) {
+            _ = resolve &Query{}.insertInto(
+                "entries_tags",
+                columns: [ "entry_id", "tag" ]
+            ).values([ "{entry.id}", "'{tag.label}'" ]).execute(this.db);
         }
     }
 
-    fun modifyEntry(Filter filter) > void !> SQLiteError {
+    fun modifyEntry(filter: Filter) > void !> SQLiteError, errors\ReadWriteError {
         if (filter.id == null) {
             return;
         }
 
         if (filter.content -> content) {
-            _ = resolve &Query{}
-                .update("entries")
-                .set([ "content = '{content}'" ])
-                .where([ "rowid = {filter.id}" ])
-                .execute(this.db);
+            _ =
+                resolve &Query{}.update("entries").set(
+                    [ "content = '{content}'" ]
+                ).where([ "rowid = {filter.id}" ]).execute(this.db);
         }
 
-        foreach (str tag in filter.tags) {
-            _ = resolve &Query{}
-                .replaceInto("entries_tags", columns: [ "entry_id", "tags" ])
-                .values([ "{filter.id}", "'{tag}'" ])
-                .where([ "entry_id = {filter.id}" ])
-                .execute(this.db);
+        foreach (tag in filter.tags) {
+            _ = resolve &Query{}.replaceInto(
+                "entries_tags",
+                columns: [ "entry_id", "tags" ]
+            ).values([ "{filter.id}", "'{tag}'" ]).where(
+                [ "entry_id = {filter.id}" ]
+            ).execute(this.db);
         }
 
         if (filter.excludedTags.len() > 0) {
-            str tags = filter.excludedTags.map::<str>(
-                fun (int _, str tag) -> "'{tag}'",
+            final tags = filter.excludedTags.map::<str>(
+                fun (_: int, tag: str) => "'{tag}'",
             ).join(", ");
 
-            _ = resolve &Query{}
-                .deleteFrom("entries_tags")
-                .where([ "entry_id = {filter.id}", "tag IN ({tags})" ])
-                .execute(this.db);
+            _ = resolve &Query{}.deleteFrom("entries_tags").where(
+                [ "entry_id = {filter.id}", "tag IN ({tags})" ]
+            ).execute(this.db);
         }
 
-        | TODO: attributes
+        // TODO: attributes
     }
 
-    fun deleteEntry(int id) > void !> SQLiteError {
-        _ = resolve &Query{}
-            .deleteFrom("entries")
-            .where([ "rowid = {id}" ])
-            .execute(this.db);
-        
-        _ = resolve &Query{}
-            .deleteFrom("entries_tags")
-            .where([ "entry_id = {id}" ])
-            .execute(this.db);
+    fun deleteEntry(id: int) > void !> SQLiteError, errors\ReadWriteError {
+        _ =
+            resolve &Query{}.deleteFrom("entries").where([ "rowid = {id}" ])
+                .execute(this.db);
+
+        _ =
+            resolve &Query{}.deleteFrom("entries_tags").where(
+                [ "entry_id = {id}" ]
+            ).execute(this.db);
     }
 }
